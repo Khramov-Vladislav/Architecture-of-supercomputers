@@ -1,9 +1,10 @@
 package src.test.java.org.example;
 
-import org.junit.jupiter.api.Test;
-import src.main.java.org.example.Bf16;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
 
 public class Bf16Test {
 
@@ -72,11 +73,13 @@ public class Bf16Test {
         assertEquals(0.0, Bf16.decode(bits), DELTA);
     }
 
-    // ==================== Потеря точности (мантиссы не хватает) ====================
+    // ==================== Потеря точности (мантиссы не хватает)
+    // ====================
 
     @Test
     void testPrecisionLossOnOneTenth() {
-        // 0.1 не представимо точно ни в float, ни тем более в BF16 с его 7 битами мантиссы.
+        // 0.1 не представимо точно ни в float, ни тем более в BF16 с его 7 битами
+        // мантиссы.
         // Проверяем, что результат близок, но не идентичен исходному значению.
         int bits = Bf16.encode(0.1);
         double decoded = Bf16.decode(bits);
@@ -85,12 +88,14 @@ public class Bf16Test {
         assertNotEquals(0.1, decoded); // подтверждаем, что точность действительно потеряна
     }
 
-    // ==================== Округление до чётного (round-to-nearest-even) ====================
+    // ==================== Округление до чётного (round-to-nearest-even)
+    // ====================
 
     @Test
     void testRoundToEven_TieRoundsDownWhenKeptBitIsEven() {
         // Нормализованная мантисса: 1.00000001 (ровно посередине между
-        // 1.0000000 и 1.0000001). Последний оставляемый бит = 0 (чётный) -> округление ВНИЗ.
+        // 1.0000000 и 1.0000001). Последний оставляемый бит = 0 (чётный) -> округление
+        // ВНИЗ.
         double value = 1.00390625; // 1 + 2^-8
         int bits = Bf16.encode(value);
 
@@ -100,7 +105,8 @@ public class Bf16Test {
     @Test
     void testRoundToEven_TieRoundsUpWhenKeptBitIsOdd() {
         // Нормализованная мантисса: 1.00000011 (ровно посередине между
-        // 1.0000001 и 1.0000010). Последний оставляемый бит = 1 (нечётный) -> округление ВВЕРХ.
+        // 1.0000001 и 1.0000010). Последний оставляемый бит = 1 (нечётный) ->
+        // округление ВВЕРХ.
         double value = 1.01171875; // 1 + 3/256
         int bits = Bf16.encode(value);
 
@@ -128,24 +134,6 @@ public class Bf16Test {
         int bits = Bf16.encode(Double.NaN);
         assertTrue(Double.isNaN(Bf16.decode(bits)));
     }
-
-    // ==================== Переполнение диапазона ====================
-//
-//    @Test
-//    void testOverflowToInfinity() {
-//        // Число за пределами диапазона экспоненты BF16 (примерно 3.39 * 10^38)
-//        // должно "сгореть" в бесконечность, а не выдать мусорный результат.
-//        int bits = Bf16.encode(1e40);
-//        assertTrue(Double.isInfinite(Bf16.decode(bits)));
-//    }
-//
-//    @Test
-//    void testUnderflowToZero() {
-//        // Слишком маленькое число (за пределами минимальной экспоненты)
-//        // в текущей упрощённой реализации сворачивается в ноль.
-//        int bits = Bf16.encode(1e-40);
-//        assertEquals(0.0, Bf16.decode(bits), DELTA);
-//    }
 
     // ==================== Формат вывода битов ====================
 

@@ -45,7 +45,6 @@ public class Bf16 {
 
     // округление мантиссы до targetBits бит по правилу round-to-nearest-even
     private static Rounded roundMantissa(String mantissa, int exponent, int targetBits) {
-        // дополняем нулями справа, если мантисса короче, чем нужно для анализа
         StringBuilder padded = new StringBuilder(mantissa);
         while (padded.length() < targetBits + 1) {
             padded.append('0');
@@ -61,7 +60,6 @@ public class Bf16 {
         } else if (remainder.contains("1")) {
             roundUp = true;
         } else {
-            // ровно посередине -> округляем к чётному
             char lastKeptBit = kept.charAt(kept.length() - 1);
             roundUp = (lastKeptBit == '1');
         }
@@ -73,7 +71,6 @@ public class Bf16 {
 
         int maxValue = (1 << targetBits) - 1;
         if (keptValue > maxValue) {
-            // переполнение мантиссы -> перенос в экспоненту
             keptValue = 0;
             exponent += 1;
         }
@@ -157,7 +154,6 @@ public class Bf16 {
                     : Double.NaN;
         }
         if (exponent == 0) {
-            // денормализованное число
             double mantissaValue = mantissaToDecimal(mantissa, 7);
             return signMultiplier * mantissaValue * Math.pow(2, -126);
         }

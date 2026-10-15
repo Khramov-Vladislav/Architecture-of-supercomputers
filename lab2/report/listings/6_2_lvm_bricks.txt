@@ -1,0 +1,101 @@
+# Новый диск 10 ГБ (sdb) на node1 и node2
+vlad@node1:~$ lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0   10G  0 disk
+├─sda1   8:1    0  512M  0 part /boot/efi
+├─sda2   8:2    0  8,6G  0 part /
+└─sda3   8:3    0  947M  0 part [SWAP]
+sdb      8:16   0   10G  0 disk
+sr0     11:0    1 1024M  1 rom
+
+# Остановка и удаление старого volume2 (на node1)
+vlad@node1:~$ sudo gluster --mode=script volume stop volume2
+volume stop: volume2: success
+vlad@node1:~$ sudo gluster --mode=script volume delete volume2
+volume delete: volume2: success
+vlad@node1:~$ sudo rm -rf /var/brick2
+
+# Установка LVM и создание thin-тома (node1, аналогично на node2)
+vlad@node1:~$ sudo apt install -y lvm2 xfsprogs thin-provisioning-tools
+[вывод установки пакетов опущен]
+vlad@node1:~$ sudo pvcreate /dev/sdb
+  Physical volume "/dev/sdb" successfully created.
+vlad@node1:~$ sudo vgcreate vg_brick2 /dev/sdb
+  Volume group "vg_brick2" successfully created
+vlad@node1:~$ sudo lvcreate --type thin-pool -n pool2 -L 8G vg_brick2
+  Thin pool volume with chunk size 64,00 KiB can address at most <15,88 TiB of data.
+  Logical volume "pool2" created.
+vlad@node1:~$ sudo lvcreate -V 6G -T vg_brick2/pool2 -n lv_brick2
+  Logical volume "lv_brick2" created.
+vlad@node1:~$ sudo mkfs.xfs -f /dev/vg_brick2/lv_brick2
+meta-data=/dev/vg_brick2/lv_brick2 isize=512    agcount=8, agsize=196608 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+data     =                       bsize=4096   blocks=1572864, imaxpct=25
+         =                       sunit=16     swidth=16 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=16384, version=2
+         =                       sectsz=512   sunit=16 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+Discarding blocks...Done.
+vlad@node1:~$ sudo mkdir -p /bricks/brick2
+vlad@node1:~$ sudo mount /dev/vg_brick2/lv_brick2 /bricks/brick2
+vlad@node1:~$ sudo mkdir /bricks/brick2/brick
+vlad@node1:~$ echo '/dev/vg_brick2/lv_brick2 /bricks/brick2 xfs defaults,nofail 0 0' | sudo tee -a /etc/fstab
+/dev/vg_brick2/lv_brick2 /bricks/brick2 xfs defaults,nofail 0 0
+
+# Проверка (node1; на node2 результат аналогичный)
+vlad@node1:~$ lsblk
+NAME                      MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda                         8:0    0   10G  0 disk
+├─sda1                      8:1    0  512M  0 part /boot/efi
+├─sda2                      8:2    0  8,6G  0 part /
+└─sda3                      8:3    0  947M  0 part [SWAP]
+sdb                         8:16   0   10G  0 disk
+├─vg_brick2-pool2_tmeta   254:0    0    8M  0 lvm
+│ └─vg_brick2-pool2-tpool 254:2    0    8G  0 lvm
+│   ├─vg_brick2-pool2     254:3    0    8G  1 lvm
+│   └─vg_brick2-lv_brick2 254:4    0    6G  0 lvm  /bricks/brick2
+└─vg_brick2-pool2_tdata   254:1    0    8G  0 lvm
+  └─vg_brick2-pool2-tpool 254:2    0    8G  0 lvm
+    ├─vg_brick2-pool2     254:3    0    8G  1 lvm
+    └─vg_brick2-lv_brick2 254:4    0    6G  0 lvm  /bricks/brick2
+sr0                        11:0    1 1024M  1 rom
+vlad@node1:~$ sudo lvs
+  LV        VG        Attr       LSize Pool  Origin Data%  Meta%
+  lv_brick2 vg_brick2 Vwi-aotz-- 6,00g pool2        1,05
+  pool2     vg_brick2 twi-aotz-- 8,00g              0,79   11,08
+vlad@node1:~$ df -h /bricks/brick2
+Файловая система                Размер Использовано  Дост Использовано% Cмонтировано в
+/dev/mapper/vg_brick2-lv_brick2   6,0G          75M  5,9G            2% /bricks/brick2
+
+# Пересоздание volume2 на LVM-бриках
+vlad@node1:~$ sudo gluster volume create volume2 node1:/bricks/brick2/brick node2:/bricks/brick2/brick
+volume create: volume2: success: please start the volume to access data
+vlad@node1:~$ sudo gluster volume start volume2
+volume start: volume2: success
+vlad@node1:~$ sudo gluster volume info volume2
+
+Volume Name: volume2
+Type: Distribute
+Volume ID: ddf89d4c-28cc-48ff-9afa-a3dbecfc8b95
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/bricks/brick2/brick
+Brick2: node2:/bricks/brick2/brick
+Options Reconfigured:
+storage.fips-mode-rchecksum: on
+transport.address-family: inet
+nfs.disable: on
+
+# Монтирование и запись данных на клиенте
+vlad@client:~$ sudo mount -t glusterfs node1:/volume2 /mnt/volume2
+vlad@client:~$ echo "before snapshot" | sudo tee /mnt/volume2/data.txt
+before snapshot
+vlad@client:~$ for i in $(seq 1 5); do echo $i | sudo tee /mnt/volume2/s$i.txt > /dev/null; done
+vlad@client:~$ ls /mnt/volume2
+data.txt  s1.txt  s2.txt  s3.txt  s4.txt  s5.txt

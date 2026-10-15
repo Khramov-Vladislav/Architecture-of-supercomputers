@@ -1,0 +1,124 @@
+\subsection{Создание, изменение и удаление томов}
+
+Том GlusterFS собирается из бриков~--- каталогов на серверных узлах. На \code{node1}, \code{node2} и \code{node3} созданы каталоги бриков (рисунки~\ref{fig:dir1}--\ref{fig:dir3}):
+\begin{Verbatim}
+sudo mkdir -p /var/brick1 /var/brick2 /var/brick3 /var/brick4 /var/brick5
+\end{Verbatim}
+Каталоги в \code{/var} (на корневом разделе) используются в учебных целях, поэтому при создании томов применяется ключ \code{force}. В реальных системах брики размещают на отдельных дисках.
+
+\fig{4.1. Каталоги бриков(node1).png}{Каталоги бриков на node1}{fig:dir1}
+\fig{4.1. Каталоги бриков(node2).png}{Каталоги бриков на node2}{fig:dir2}
+\fig{4.1. Каталоги бриков(node3).png}{Каталоги бриков на node3}{fig:dir3}
+
+\subsubsection{Тома replica, replica с арбитром и distributed}
+
+На узле \code{node1} созданы три тома (рисунок~\ref{fig:create}):
+\begin{itemize}
+  \item \code{volume1}~--- том типа replica с двумя копиями (\code{node1}, \code{node2}). Каждый файл хранится на обоих бриках. При создании GlusterFS предупреждает, что replica~2 подвержена split-brain (расхождению копий при потере связи между узлами), и просит подтверждения;
+  \item \code{vol_arb}~--- том replica~3 с арбитром (\code{replica 3 arbiter 1}). Третий брик (\code{node3}) хранит только метаданные файлов и не требует места под данные, но позволяет принимать решение о кворуме и защищает от split-brain;
+  \item \code{volume2}~--- том типа distributed, в котором файлы распределяются между бриками целиком (каждый файл лежит на одном из бриков).
+\end{itemize}
+
+\begin{Verbatim}
+sudo gluster volume create volume1 replica 2 node1:/var/brick1 node2:/var/brick1 force
+sudo gluster volume start volume1
+
+sudo gluster volume create vol_arb replica 3 arbiter 1 \
+  node1:/var/brick3 node2:/var/brick3 node3:/var/brick3 force
+sudo gluster volume start vol_arb
+
+sudo gluster volume create volume2 node1:/var/brick2 node2:/var/brick2 force
+sudo gluster volume start volume2
+\end{Verbatim}
+
+\fig{4.2. Создание томов (всё на node1).png}{Создание и запуск томов volume1, vol\_arb и volume2}{fig:create}
+
+Тома смонтированы на клиенте с помощью файловой системы \code{glusterfs} (рисунок~\ref{fig:mount}). В тома записаны тестовые файлы, затем проверено их размещение на бриках:
+\begin{Verbatim}
+sudo mount -t glusterfs node1:/volume1 /mnt/volume1
+sudo mount -t glusterfs node1:/volume2 /mnt/volume2
+sudo mount -t glusterfs node1:/vol_arb /mnt/vol_arb
+\end{Verbatim}
+
+\fig{4.3. Монтирование и проверка на client.png}{Монтирование томов и запись тестовых файлов на клиенте}{fig:mount}
+
+\textbf{Replica.} Файл \code{test0.txt}, записанный в \code{/mnt/volume1}, присутствует на бриках обоих узлов (рисунки~\ref{fig:b1n1}, \ref{fig:b1n2}).
+
+\fig{4.3. ls -l -var-brick1(node1).png}{Содержимое /var/brick1 на node1}{fig:b1n1}
+\fig{4.3. ls -l -var-brick1(node2).png}{Содержимое /var/brick1 на node2}{fig:b1n2}
+
+\textbf{Replica с арбитром.} Файл, записанный в \code{/mnt/vol_arb}, присутствует на всех трёх узлах, однако на узле-арбитре \code{node3} его размер равен нулю: арбитр хранит лишь метаданные (рисунки~\ref{fig:b3n1}--\ref{fig:b3n3}).
+
+\fig{4.3. ls -l -var-brick3(node1).png}{Содержимое /var/brick3 на node1}{fig:b3n1}
+\fig{4.3. ls -l -var-brick3(node2).png}{Содержимое /var/brick3 на node2}{fig:b3n2}
+\fig{4.3. ls -l -var-brick3(node3).png}{Содержимое /var/brick3 на node3 (арбитр)}{fig:b3n3}
+
+\textbf{Distributed.} В \code{/mnt/volume2} создано 10 файлов. Они поделены между бриками \code{node1} и \code{node2}: каждый файл целиком хранится на одном из них (рисунки~\ref{fig:b2n1}, \ref{fig:b2n2}).
+
+\fig{4.3. ls -l -var-brick2(node1).png}{Содержимое /var/brick2 на node1}{fig:b2n1}
+\fig{4.3. ls -l -var-brick2(node2).png}{Содержимое /var/brick2 на node2}{fig:b2n2}
+
+\subsubsection{Том stripe}
+
+Тип тома \code{stripe}, разбивавший файлы на фрагменты (полосы) по брикам, был объявлен устаревшим и удалён из GlusterFS начиная с версии~6. В использованной версии~10.3 создать такой том невозможно: попытка создания завершается ошибкой (рисунок~\ref{fig:stripe}).
+\begin{Verbatim}
+sudo gluster volume create vol_stripe stripe 2 \
+  node1:/var/brick4 node2:/var/brick4 force
+\end{Verbatim}
+
+\fig{4.4. Stripe(node1).png}{Попытка создания тома типа stripe}{fig:stripe}
+
+Функциональность разбиения файла на части по узлам в современных версиях реализуют два механизма, оба из которых проверены в работе.
+
+\textbf{Аналог 1: disperse (erasure coding).} Файл делится на фрагменты, к которым добавляется избыточность (код стирания). При конфигурации из трёх бриков с \code{redundancy 1} данные хранятся в двух фрагментах, третий хранит чётность, том переживает потерю любого одного узла.
+\begin{Verbatim}
+sudo gluster volume create vol_disp disperse 3 redundancy 1 \
+  node1:/var/brick4 node2:/var/brick4 node3:/var/brick4 force
+sudo gluster volume start vol_disp
+\end{Verbatim}
+
+\fig{4.4. Аналог 1: disperse (erasure coding) (node1).png}{Создание тома vol\_disp на node1 и размещение файла на брике}{fig:disp1}
+\fig{4.4. Аналог 1: disperse (erasure coding)(client).png}{Запись файла в том vol\_disp на клиенте}{fig:disp2}
+
+\textbf{Аналог 2: шардирование (sharding).} Включается параметром тома \code{features.shard}; файлы режутся на блоки заданного размера (4~МБ), которые распределяются между бриками. Параметр включён на пустом томе \code{vol_shard}.
+\begin{Verbatim}
+sudo gluster volume create vol_shard node1:/var/brick5 node2:/var/brick5 force
+sudo gluster volume set vol_shard features.shard on
+sudo gluster volume set vol_shard features.shard-block-size 4MB
+sudo gluster volume start vol_shard
+\end{Verbatim}
+
+Блоки хранятся в служебном каталоге \code{.shard} каждого брика (рисунки~\ref{fig:shardc}--\ref{fig:shard2}).
+
+\fig{4.4. Аналог 2: шардирование (client).png}{Запись файла в том vol\_shard на клиенте}{fig:shardc}
+\fig{4.4. Аналог 2: шардирование (node1).png}{Создание тома vol\_shard на node1}{fig:shard0}
+\fig{4.4. sudo ls -lh -var-brick5-(node1).shard.png}{Блоки файла в каталоге .shard на node1}{fig:shard1}
+\fig{4.4. sudo ls -lh -var-brick5-(node2).shard.png}{Блоки файла в каталоге .shard на node2}{fig:shard2}
+
+\subsubsection{Изменение томов}
+
+Поведение тома изменяется параметрами (опциями) командой \code{gluster volume set}. Для тома \code{volume1} изменён размер кэша и ограничен доступ к тому адресом клиента, затем параметры возвращены к значениям по умолчанию командой \code{volume reset} (рисунок~\ref{fig:set}).
+\begin{Verbatim}
+sudo gluster volume set volume1 performance.cache-size 256MB
+sudo gluster volume set volume1 auth.allow 10.0.2.10
+sudo gluster volume info volume1
+sudo gluster volume reset volume1 performance.cache-size
+sudo gluster volume reset volume1 auth.allow
+\end{Verbatim}
+
+\fig{4.5. Изменение томов.png}{Изменение и сброс параметров тома volume1}{fig:set}
+
+Изменение состава бриков (добавление, удаление, смена числа реплик) рассмотрено в разделе~\ref{sec:bricks}.
+
+\subsubsection{Удаление томов}
+
+Временные тома \code{vol_disp} и \code{vol_shard} отмонтированы на клиенте, остановлены и удалены (рисунок~\ref{fig:del}). Остальные тома сохранены для дальнейшей работы. Данные в каталогах бриков при удалении тома остаются, поэтому перед повторным использованием каталога его необходимо очистить.
+\begin{Verbatim}
+sudo gluster volume stop vol_disp
+sudo gluster volume delete vol_disp
+sudo gluster volume stop vol_shard
+sudo gluster volume delete vol_shard
+sudo gluster volume list
+\end{Verbatim}
+
+\fig{4.6. Удаление томов.png}{Остановка и удаление томов vol\_disp и vol\_shard}{fig:del}

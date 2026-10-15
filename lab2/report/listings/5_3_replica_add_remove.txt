@@ -1,0 +1,66 @@
+# Увеличение числа реплик: replica 2 -> replica 3
+vlad@node3:~$ sudo gluster volume add-brick volume1 replica 3 node3:/var/brick1 force
+volume add-brick: success
+vlad@node3:~$ sudo gluster volume info volume1
+
+Volume Name: volume1
+Type: Replicate
+Volume ID: 288d7647-8496-47d7-b802-a7622103aa67
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 1 x 3 = 3
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick1
+Brick2: node2:/var/brick1
+Brick3: node3:/var/brick1
+Options Reconfigured:
+performance.client-io-threads: off
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+cluster.granular-entry-heal: on
+
+# Самолечение копирует данные на новый брик
+vlad@node3:~$ sudo gluster volume heal volume1 info
+Brick node1:/var/brick1
+/test0.txt
+Status: Connected
+Number of entries: 1
+
+Brick node2:/var/brick1
+/test0.txt
+Status: Connected
+Number of entries: 1
+
+Brick node3:/var/brick1
+Status: Connected
+Number of entries: 0
+
+vlad@node3:~$ ls -l /var/brick1
+итого 8
+-rw-r--r-- 2 root root 13 окт  8 23:53 test0.txt
+
+# Возврат к replica 2: удаление брика
+vlad@node3:~$ sudo gluster volume remove-brick volume1 replica 2 node3:/var/brick1 force
+Remove-brick force will not migrate files from the removed bricks, so they will no longer be available on the volume.
+Do you want to continue? (y/n) y
+volume remove-brick commit force: success
+vlad@node3:~$ sudo gluster volume info volume1
+
+Volume Name: volume1
+Type: Replicate
+Volume ID: 288d7647-8496-47d7-b802-a7622103aa67
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 1 x 2 = 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick1
+Brick2: node2:/var/brick1
+Options Reconfigured:
+performance.client-io-threads: off
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+cluster.granular-entry-heal: on

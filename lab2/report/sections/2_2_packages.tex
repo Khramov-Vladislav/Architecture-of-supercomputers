@@ -1,0 +1,22 @@
+\subsection{Установка и настройка пакетов}
+
+На серверных узлах \code{node1}, \code{node2}, \code{node3} установлен пакет \code{glusterfs-server} и запущена служба \code{glusterd}:
+\begin{Verbatim}
+sudo apt update
+sudo apt install -y glusterfs-server
+sudo systemctl enable --now glusterd
+\end{Verbatim}
+
+На клиентском узле \code{client} установлен пакет \code{glusterfs-client}:
+\begin{Verbatim}
+sudo apt install -y glusterfs-client
+\end{Verbatim}
+
+Служба \code{glusterd} на клиенте не нужна: клиент лишь монтирует тома. Установлена версия GlusterFS~10.3. Исполняемые файлы \code{gluster} и \code{glusterd} находятся в каталоге \code{/usr/sbin}, которого нет в \code{PATH} обычного пользователя Debian~12, поэтому команды управления кластером выполняются через \code{sudo}.
+
+На рисунке~\ref{fig:dpkg} показаны установленные пакеты на клиенте, на рисунках~\ref{fig:uuid1}--\ref{fig:uuid3}~--- серверные узлы до объединения в пул. У каждого узла собственный уникальный идентификатор (UUID), без этого пул собрать невозможно.
+
+\fig{client-dpkg -l | grep glusterfs.png}{Пакеты GlusterFS на клиентском узле}{fig:dpkg}
+\fig{node1-sudo gluster pool list.png}{Список пула на node1 до добавления узлов}{fig:uuid1}
+\fig{node2-sudo gluster pool list.png}{Список пула на node2 до добавления узлов}{fig:uuid2}
+\fig{node3-sudo gluster pool list.png}{Список пула на node3 до добавления узлов}{fig:uuid3}

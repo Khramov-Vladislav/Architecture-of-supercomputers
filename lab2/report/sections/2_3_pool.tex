@@ -1,0 +1,26 @@
+\subsection{Пул системы хранения: добавление и удаление узлов}
+
+Пул (trusted storage pool) формируется командой \code{gluster peer probe}, которая выполняется на одном из узлов. На \code{node1} в пул добавлены \code{node2} и \code{node3}:
+\begin{Verbatim}
+sudo gluster peer probe node2
+sudo gluster peer probe node3
+sudo gluster peer status
+sudo gluster pool list
+\end{Verbatim}
+
+Результат показан на рисунках~\ref{fig:probe}--\ref{fig:status2}: все узлы находятся в состоянии \code{Connected}, список пула одинаков на всех узлах.
+
+\fig{3.1. Собрать пул.png}{Добавление узлов node2 и node3 в пул}{fig:probe}
+\fig{3.2. Проверить состояние.png}{Состояние пула на node1}{fig:status1}
+\fig{3.2. Проверить состояние (на node2).png}{Состояние пула на node2}{fig:status2}
+
+Для удаления узла из пула используется команда \code{gluster peer detach}. Узел можно удалить только в том случае, если на нём нет бриков существующих томов. Узел \code{node3} удалён из пула (рисунок~\ref{fig:detach}), после чего добавлен обратно командой \code{peer probe} (рисунок~\ref{fig:reprobe}):
+\begin{Verbatim}
+sudo gluster peer detach node3
+sudo gluster pool list
+sudo gluster peer probe node3
+sudo gluster pool list
+\end{Verbatim}
+
+\fig{3.3. Удалить узел из пула.png}{Удаление узла node3 из пула}{fig:detach}
+\fig{3.4. Вернуть узел обратно.png}{Повторное добавление узла node3 в пул}{fig:reprobe}

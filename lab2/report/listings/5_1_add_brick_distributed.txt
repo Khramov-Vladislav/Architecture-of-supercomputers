@@ -1,0 +1,61 @@
+# Состояние volume2 до добавления брика: 10 файлов на двух бриках
+vlad@node1:~$ ls /var/brick2 | wc -l
+5
+vlad@node2:~$ ls /var/brick2 | wc -l
+5
+vlad@node3:~$ ls /var/brick2 | wc -l
+0
+
+# Монтирование томов на клиенте
+vlad@client:~$ mount | grep gluster
+node1:/volume1 on /mnt/volume1 type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+node1:/volume2 on /mnt/volume2 type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+node1:/vol_arb on /mnt/vol_arb type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+vlad@client:~$ ls /mnt/volume2 | wc -l
+10
+
+# Добавление третьего брика
+vlad@node1:~$ sudo gluster volume add-brick volume2 node3:/var/brick2 force
+volume add-brick: success
+vlad@node1:~$ sudo gluster volume info volume2
+
+Volume Name: volume2
+Type: Distribute
+Volume ID: 8935aa8b-cb60-4272-a004-e00c0326ffbb
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 3
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick2
+Brick2: node2:/var/brick2
+Brick3: node3:/var/brick2
+Options Reconfigured:
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+
+# Перебалансировка
+vlad@node1:~$ sudo gluster volume rebalance volume2 start
+volume rebalance: volume2: success: Rebalance on volume2 has been started successfully. Use rebalance status command to check status of the rebalance process.
+ID: b6ef94b4-d346-4324-85f3-6663c573009c
+vlad@node1:~$ sudo gluster volume rebalance volume2 status
+   Node  Rebalanced-files      size  scanned  failures  skipped     status  run time
+  ------ ----------------  --------  -------  --------  -------  ---------  --------
+  node3                 0    0Bytes        0         0        0  completed   0:00:00
+  node2                 1    2Bytes        6         0        3  completed   0:00:00
+  localhost             6   12Bytes        6         0        0  completed   0:00:00
+volume rebalance: volume2: success
+
+# Создание новых файлов (11--40) на клиенте
+vlad@client:~$ for i in $(seq 11 40); do echo $i | sudo tee /mnt/volume2/f$i.txt > /dev/null; done
+vlad@client:~$ ls /mnt/volume2 | wc -l
+40
+
+# Размещение на бриках (с учётом служебных link-файлов DHT)
+vlad@node1:~$ ls /var/brick2 | wc -l
+13
+vlad@node2:~$ ls /var/brick2 | wc -l
+19
+vlad@node3:~$ ls /var/brick2 | wc -l
+11

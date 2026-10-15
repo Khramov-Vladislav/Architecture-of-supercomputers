@@ -1,0 +1,307 @@
+5.1. Добавить брик в distributed-том
+Сначала запомните, как файлы лежат сейчас. На node1, node2, node3:
+vlad@node1:~$ ls /var/brick2 | wc -l
+5
+vlad@node1:~$ 
+
+vlad@node2:~$ ls /var/brick2 | wc -l
+5
+vlad@node2:~$ 
+
+vlad@node3:~$ ls /var/brick2 | wc -l
+0
+vlad@node3:~$ 
+
+Добавьте брик и запустите перебалансировку:
+vlad@node3:~$ sudo gluster volume add-brick volume2 node3:/var/brick2 force
+[sudo] пароль для vlad: 
+volume add-brick: success
+vlad@node3:~$ sudo gluster volume info volume2
+ 
+Volume Name: volume2
+Type: Distribute
+Volume ID: 8935aa8b-cb60-4272-a004-e00c0326ffbb
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 3
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick2
+Brick2: node2:/var/brick2
+Brick3: node3:/var/brick2
+Options Reconfigured:
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+vlad@node3:~$ sudo gluster volume rebalance volume2 start
+volume rebalance: volume2: success: Rebalance on volume2 has been started successfully. Use rebalance status command to check status of the rebalance process.
+ID: 0eca8166-14c6-4b49-9a0c-46ec71bcb580
+vlad@node3:~$ sudo gluster volume rebalance volume2 status
+                                    Node Rebalanced-files          size       scanned      failures       skipped               status  run time in h:m:s
+                               ---------      -----------   -----------   -----------   -----------   -----------         ------------     --------------
+                                   node1                1        2Bytes             5             0             0            completed        0:00:00
+                                   node2                2        4Bytes             5             0             0            completed        0:00:00
+                               localhost                0        0Bytes             0             0             0            completed        0:00:00
+volume rebalance: volume2: success
+vlad@node3:~$ 
+
+Повторяйте status, пока не увидите completed.
+Теперь создайте новые файлы на client:
+vlad@client:~$ for i in $(seq 11 40); do echo $i | sudo tee /mnt/volume2/f$i.txt > /dev/null; done
+ls /mnt/volume2 | wc -l
+[sudo] пароль для vlad: 
+30
+vlad@client:~$ 
+
+Затем на node1, node2, node3 снова:
+vlad@node1:~$ ls /var/brick2 | wc -l
+4
+vlad@node1:~$ 
+
+:~$ ls /var/brick2 | wc -l
+3
+vlad@node2:~$ 
+
+3
+vlad@node3:~$ 
+Файлы должны быть распределены по трём узлам, а сумма равна 40.
+
+5.2. Удалить брик из distributed-тома
+
+Удаление идёт в три этапа: start переносит данные с брика на остальные, status показывает прогресс, commit фиксирует удаление.
+vlad@node3:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 start
+It is recommended that remove-brick be run with cluster.force-migration option disabled to prevent possible data corruption. Doing so will ensure that files that receive writes during migration will not be migrated and will need to be manually copied after the remove-brick commit operation. Please check the value of the option and update accordingly. 
+Do you want to continue with your current cluster.force-migration settings? (y/n) y
+volume remove-brick start: success
+ID: 459d671d-82ea-4456-934f-7f2e9123171f
+vlad@node3:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 status
+                                    Node Rebalanced-files          size       scanned      failures       skipped               status  run time in h:m:s
+                               ---------      -----------   -----------   -----------   -----------   -----------         ------------     --------------
+                               localhost                3        6Bytes             3             0             0            completed        0:00:00
+vlad@node3:~$ 
+Дождитесь completed, затем:
+vlad@node3:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 commit
+volume remove-brick commit: success
+Check the removed bricks to ensure all files are migrated.
+If files with data are found on the brick path, copy them via a gluster mount point before re-purposing the removed brick. 
+vlad@node3:~$ sudo gluster volume info volume2
+ 
+Volume Name: volume2
+Type: Distribute
+Volume ID: 8935aa8b-cb60-4272-a004-e00c0326ffbb
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick2
+Brick2: node2:/var/brick2
+Options Reconfigured:
+performance.client-io-threads: on
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+vlad@node3:~$ 
+Проверьте, что данные не потерялись. На client:
+vlad@client:~$ ls /mnt/volume2 | wc -l
+30
+vlad@client:~$ 
+
+Должно быть по-прежнему 40. На node3: ls /var/brick2 | wc -l даст 0.
+vlad@node3:~$ ls /var/brick2 | wc -l
+0
+vlad@node3:~$ 
+
+5.3. Добавить и удалить брик в replica-томе
+
+В replica-томе можно менять число копий. Превратим volume1 из replica 2 в replica 3.
+vlad@node3:~$ sudo gluster volume add-brick volume1 replica 3 node3:/var/brick1 force
+volume add-brick: success
+vlad@node3:~$ sudo gluster volume info volume1
+ 
+Volume Name: volume1
+Type: Replicate
+Volume ID: 288d7647-8496-47d7-b802-a7622103aa67
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 1 x 3 = 3
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick1
+Brick2: node2:/var/brick1
+Brick3: node3:/var/brick1
+Options Reconfigured:
+performance.client-io-threads: off
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+cluster.granular-entry-heal: on
+vlad@node3:~$ sudo gluster volume heal volume1 info
+Brick node1:/var/brick1
+/test0.txt 
+Status: Connected
+Number of entries: 1
+
+Brick node2:/var/brick1
+/test0.txt 
+Status: Connected
+Number of entries: 1
+
+Brick node3:/var/brick1
+Status: Connected
+Number of entries: 0
+
+vlad@node3:~$ 
+В volume info будет Number of Bricks: 1 x 3 = 3. Самолечение (heal) скопирует данные на новый брик. Проверьте на node3:
+итого 8
+-rw-r--r-- 2 root root 13 окт  8 23:53 test0.txt
+vlad@node3:~$ 
+Там должен появиться test0.txt.
+
+Теперь удалим брик и вернёмся к replica 2:
+vlad@node3:~$ sudo gluster volume remove-brick volume1 replica 2 node3:/var/brick1 force
+Remove-brick force will not migrate files from the removed bricks, so they will no longer be available on the volume.
+Do you want to continue? (y/n) y
+volume remove-brick commit force: success
+vlad@node3:~$ sudo gluster volume info volume1
+ 
+Volume Name: volume1
+Type: Replicate
+Volume ID: 288d7647-8496-47d7-b802-a7622103aa67
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 1 x 2 = 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick1
+Brick2: node2:/var/brick1
+Options Reconfigured:
+performance.client-io-threads: off
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+cluster.granular-entry-heal: on
+vlad@node3:~$ 
+
+На подтверждение ответьте y. В итоге Number of Bricks: 1 x 2 = 2.
+
+
+Проверка и исправление
+
+На client:
+vlad@client:~$ mount | grep gluster
+vlad@client:~$ 
+Если вывода нет, том не смонтирован. Удалите локальные файлы и смонтируйте тома:
+
+vlad@client:~$ sudo rm -f /mnt/volume2/f*.txt
+[sudo] пароль для vlad: 
+Попробуйте ещё раз.
+[sudo] пароль для vlad: 
+vlad@client:~$ sudo mount -t glusterfs node1:/volume1 /mnt/volume1
+vlad@client:~$ sudo mount -t glusterfs node1:/volume2 /mnt/volume2
+vlad@client:~$ sudo mount -t glusterfs node1:/vol_arb /mnt/vol_arb
+vlad@client:~$ mount | grep gluster
+node1:/volume1 on /mnt/volume1 type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+node1:/volume2 on /mnt/volume2 type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+node1:/vol_arb on /mnt/vol_arb type fuse.glusterfs (rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,max_read=131072)
+vlad@client:~$ ls /mnt/volume2 | wc -l
+10
+vlad@client:~$ 
+
+Последняя команда должна дать 10. Чтобы монтирование переживало перезагрузку, добавьте в /etc/fstab на client:
+node1:/volume1 /mnt/volume1 glusterfs defaults,_netdev,nofail 0 0
+node1:/volume2 /mnt/volume2 glusterfs defaults,_netdev,nofail 0 0
+node1:/vol_arb /mnt/vol_arb glusterfs defaults,_netdev,nofail 0 0
+
+vlad@client:~$ nano /etc/fstab
+vlad@client:~$ sudo nano /etc/fstab
+vlad@client:~$ 
+
+Повтор distributed-блока (5.1 и 5.2)
+
+Брик на node3 уже был в составе тома, поэтому его каталог надо очистить, иначе add-brick откажет с «already part of a volume». На node3:
+vlad@node3:~$ sudo rm -rf /var/brick2
+[sudo] пароль для vlad: 
+vlad@node3:~$ sudo mkdir /var/brick2
+vlad@node3:~$ 
+
+На node1:
+vlad@node1:~$ sudo gluster volume add-brick volume2 node3:/var/brick2 force
+[sudo] пароль для vlad: 
+volume add-brick: success
+vlad@node1:~$ sudo gluster volume rebalance volume2 start
+volume rebalance: volume2: success: Rebalance on volume2 has been started successfully. Use rebalance status command to check status of the rebalance process.
+ID: b6ef94b4-d346-4324-85f3-6663c573009c
+vlad@node1:~$ sudo gluster volume rebalance volume2 status
+                                    Node Rebalanced-files          size       scanned      failures       skipped               status  run time in h:m:s
+                               ---------      -----------   -----------   -----------   -----------   -----------         ------------     --------------
+                                   node3                0        0Bytes             0             0             0            completed        0:00:00
+                                   node2                1        2Bytes             6             0             3            completed        0:00:00
+                               localhost                6       12Bytes             6             0             0            completed        0:00:00
+volume rebalance: volume2: success
+vlad@node1:~$ 
+
+На client:
+vlad@client:~$ for i in $(seq 11 40); do echo $i | sudo tee /mnt/volume2/f$i.txt > /dev/null; done
+vlad@client:~$ ls /mnt/volume2 | wc -l
+40
+vlad@client:~$ 
+Ожидается 40.
+
+На node1, node2, node3:
+vlad@node1:~$ ls /var/brick2 | wc -l
+13
+vlad@node1:~$ 
+vlad@node2:~$ ls /var/brick2 | wc -l
+19
+vlad@node2:~$ 
+
+vlad@node3:~$ ls /var/brick2 | wc -l
+11
+vlad@node3:~$ 
+
+
+Удаление брика, на node1 (или node3):
+vlad@node1:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 start
+It is recommended that remove-brick be run with cluster.force-migration option disabled to prevent possible data corruption. Doing so will ensure that files that receive writes during migration will not be migrated and will need to be manually copied after the remove-brick commit operation. Please check the value of the option and update accordingly. 
+Do you want to continue with your current cluster.force-migration settings? (y/n) y
+volume remove-brick start: success
+ID: 0863187a-dcd8-4776-8792-05b46a14c175
+vlad@node1:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 status
+                                    Node Rebalanced-files          size       scanned      failures       skipped               status  run time in h:m:s
+                               ---------      -----------   -----------   -----------   -----------   -----------         ------------     --------------
+                                   node3               11       30Bytes            11             0             0            completed        0:00:00
+vlad@node1:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 commit
+volume remove-brick commit: success
+Check the removed bricks to ensure all files are migrated.
+If files with data are found on the brick path, copy them via a gluster mount point before re-purposing the removed brick. 
+vlad@node1:~$ sudo gluster volume info volume2
+ 
+Volume Name: volume2
+Type: Distribute
+Volume ID: 8935aa8b-cb60-4272-a004-e00c0326ffbb
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick2
+Brick2: node2:/var/brick2
+Options Reconfigured:
+performance.client-io-threads: on
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+vlad@node1:~$ 
+
+
+
+Проверка: ls /mnt/volume2 | wc -l на client должно по-прежнему дать 40, а ls /var/brick2 | wc -l на node3 даст 0.
+vlad@client:~$ ls /mnt/volume2 | wc -l
+40
+vlad@client:~$ 
+
+vlad@node3:~$ ls /var/brick2 | wc -l
+0
+vlad@node3:~$ 
+

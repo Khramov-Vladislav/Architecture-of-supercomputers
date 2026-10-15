@@ -1,0 +1,611 @@
+Пункт 6. Квота и снапшот
+
+Начнём с квоты (диски не нужны), а для снапшота подготовим диски.
+6.1. Квота на volume1
+
+На node1:
+vlad@node1:~$ sudo gluster volume quota volume1 enable
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 limit-usage / 10MB
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 list
+                  Path                   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded? Hard-limit exceeded?
+-------------------------------------------------------------------------------------------------------------------------------
+/                                         10.0MB     80%(8.0MB) 512Bytes  10.0MB              No                   No
+vlad@node1:~$ 
+
+Проверка на client (запись больше лимита):
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/big.bin bs=1M count=20
+20+0 records in
+20+0 records out
+20971520 bytes (21 MB, 20 MiB) copied, 0,101608 s, 206 MB/s
+vlad@client:~$ df -h /mnt/volume1
+Файловая система Размер Использовано  Дост Использовано% Cмонтировано в
+node1:/volume1      10M          10M     0          100% /mnt/volume1
+vlad@client:~$ 
+
+Ожидается ошибка Disk quota exceeded. Остановка может случиться не ровно на 10 МБ, это нормально. Заодно df покажет размер тома, равный лимиту квоты.
+
+Квоту можно ставить и на каталог. На client:
+vlad@client:~$ sudo mkdir /mnt/volume1/dir1
+mkdir: невозможно создать каталог «/mnt/volume1/dir1»: Превышена дисковая квота
+vlad@client:~$ 
+
+На node1:
+vlad@node1:~$ sudo gluster volume quota volume1 limit-usage /dir1 2MB
+quota command failed : Failed to get trusted.gfid attribute on path /dir1. Reason : Нет такого файла или каталога
+please enter the path relative to the volume
+vlad@node1:~$ sudo gluster volume quota volume1 list
+                  Path                   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded? Hard-limit exceeded?
+-------------------------------------------------------------------------------------------------------------------------------
+/                                         10.0MB     80%(8.0MB)   20.0MB  0Bytes             Yes                  Yes
+vlad@node1:~$ 
+
+Снова на client:
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/dir1/f.bin bs=1M count=5
+dd: не удалось открыть '/mnt/volume1/dir1/f.bin': Нет такого файла или каталога
+vlad@client:~$ 
+Здесь запись остановится около 2 МБ.
+
+
+Очистка и откат (на client, затем на node1):
+vlad@client:~$ sudo rm -f /mnt/volume1/big.bin /mnt/volume1/dir1/f.bin
+vlad@client:~$ 
+
+vlad@node1:~$ sudo rm -f /mnt/volume1/big.bin /mnt/volume1/dir1/f.bin
+vlad@node1:~$ 
+
+vlad@node1:~$ sudo gluster volume quota volume1 remove /dir1
+quota command failed : Failed to get trusted.gfid attribute on path /dir1. Reason : Нет такого файла или каталога
+please enter the path relative to the volume
+vlad@node1:~$ sudo gluster volume quota volume1 list
+                  Path                   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded? Hard-limit exceeded?
+-------------------------------------------------------------------------------------------------------------------------------
+/                                         10.0MB     80%(8.0MB) 512Bytes  10.0MB              No                   No
+vlad@node1:~$ 
+
+Квоту на корне тома оставьте для отчёта включённой или отключите, как преподаватель попросит: sudo gluster volume quota volume1 disable.
+
+
+
+исправление
+
+
+Повтор 6.1
+
+После очистки квота показывает Used 512Bytes, значит, том пуст и готов.
+
+На node1: отключаем задержку проверки.
+vlad@node1:~$ sudo gluster volume set volume1 features.soft-timeout 0
+volume set: success
+vlad@node1:~$ sudo gluster volume set volume1 features.hard-timeout 0
+volume set: success
+vlad@node1:~$ 
+
+На client: создаём каталог (теперь место есть) и пробуем превысить корневую квоту.
+vlad@client:~$ sudo mkdir /mnt/volume1/dir1
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/big.bin bs=1M count=20
+dd: ошибка записи '/mnt/volume1/big.bin': Превышена дисковая квота
+dd: закрытие выходного файла '/mnt/volume1/big.bin': Превышена дисковая квота
+vlad@client:~$ ls -lh /mnt/volume1
+итого 11M
+-rw-r--r-- 1 root root  11M окт 15 23:12 big.bin
+drwxr-xr-x 2 root root 4,0K окт 15 23:12 dir1
+-rw-r--r-- 1 root root   13 окт  8 23:53 test0.txt
+vlad@client:~$ 
+
+Ожидается dd: ... Disk quota exceeded, файл big.bin около 10 МБ (небольшой перебор допустим).
+
+На node1:
+vlad@node1:~$ sudo gluster volume quota volume1 list
+                  Path                   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded? Hard-limit exceeded?
+-------------------------------------------------------------------------------------------------------------------------------
+/                                         10.0MB     80%(8.0MB)   10.5MB  0Bytes             Yes                  Yes
+vlad@node1:~$ 
+
+На client: очистка.
+vlad@client:~$ sudo rm -f /mnt/volume1/big.bin
+vlad@client:~$ 
+
+Квота на каталог
+
+На node1:
+vlad@node1:~$ sudo gluster volume quota volume1 limit-usage /dir1 2MB
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 list
+                  Path                   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded? Hard-limit exceeded?
+-------------------------------------------------------------------------------------------------------------------------------
+/                                         10.0MB     80%(8.0MB) 512Bytes  10.0MB              No                   No
+/dir1                                      2.0MB     80%(1.6MB)   0Bytes   2.0MB              No                   No
+vlad@node1:~$ 
+
+
+На client:
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/dir1/f.bin bs=1M count=5
+dd: ошибка записи '/mnt/volume1/dir1/f.bin': Превышена дисковая квота
+dd: закрытие выходного файла '/mnt/volume1/dir1/f.bin': Превышена дисковая квота
+vlad@client:~$ ls -lh /mnt/volume1/dir1
+итого 3,0M
+-rw-r--r-- 1 root root 3,0M окт 15 23:14 f.bin
+vlad@client:~$ 
+Запись остановится около 2 МБ с той же ошибкой, хотя до корневых 10 МБ ещё далеко.
+
+Очистка. На client:
+vlad@client:~$ sudo rm -f /mnt/volume1/dir1/f.bin
+vlad@client:~$ 
+На node1:
+vlad@node1:~$ sudo gluster volume quota volume1 remove /dir1
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 list
+                  Path                   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded? Hard-limit exceeded?
+-------------------------------------------------------------------------------------------------------------------------------
+/                                         10.0MB     80%(8.0MB) 512Bytes  10.0MB              No                   No
+vlad@node1:~$ 
+
+Корневую квоту на 10 МБ оставляйте включённой до конца работы, снимать её не нужно.
+
+
+6.2. Подготовка бриков на LVM для снапшотов
+
+Снапшоты в GlusterFS работают только на брике, расположенном на thin-provisioned LVM. Поэтому volume2 пересоберём на LVM-бриках на node1 и node2. Данные в нём (40 тестовых файлов) при этом пропадут, но они нам больше не нужны.
+
+Шаг 1. Диски в VirtualBox
+
+На node1 и node2:
+vlad@node1:~$ sudo poweroff
+
+Broadcast message from root@node1 on pts/1 (Thu 2026-10-15 23:22:33 MSK):
+
+The system will power off now!
+
+vlad@node1:~$ Connection to 127.0.0.1 closed by remote host.
+Connection to 127.0.0.1 closed.
+vlad@MacBook-Air-vlad lab2 % 
+
+vlad@node2:~$ sudo poweroff
+[sudo] пароль для vlad: 
+Попробуйте ещё раз.
+[sudo] пароль для vlad: 
+
+Broadcast message from root@node2 on pts/1 (Thu 2026-10-15 23:22:41 MSK):
+
+The system will power off now!
+
+vlad@node2:~$ Connection to 127.0.0.1 closed by remote host.
+Connection to 127.0.0.1 closed.
+vlad@MacBook-Air-vlad ~ % 
+
+В VirtualBox для gluster-node1 и gluster-node2: Settings → Storage → у контроллера значок «Add Hard Disk» → Create → VDI, динамический, 10 ГБ. Выберите созданный диск и подтвердите. Запустите обе ВМ и проверьте:
+vlad@node1:~$ lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0   10G  0 disk 
+├─sda1   8:1    0  512M  0 part /boot/efi
+├─sda2   8:2    0  8,6G  0 part /
+└─sda3   8:3    0  947M  0 part [SWAP]
+sdb      8:16   0   10G  0 disk 
+sr0     11:0    1 1024M  1 rom  
+vlad@node1:~$ 
+
+vlad@node2:~$ lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0   10G  0 disk 
+├─sda1   8:1    0  512M  0 part /boot/efi
+├─sda2   8:2    0  8,6G  0 part /
+└─sda3   8:3    0  947M  0 part [SWAP]
+sdb      8:16   0   10G  0 disk 
+sr0     11:0    1 1024M  1 rom  
+vlad@node2:~$ 
+
+Должен появиться новый диск 10 ГБ без разделов. В командах ниже он назван /dev/sdb. Если у вас другое имя (например, /dev/vdb), подставляйте своё.
+
+Шаг 2. Освободить volume2
+
+На client:
+vlad@client:~$ sudo umount /mnt/volume2
+vlad@client:~$ 
+
+На node1:
+vlad@node1:~$ sudo gluster --mode=script volume stop volume2
+[sudo] пароль для vlad: 
+volume stop: volume2: success
+vlad@node1:~$ sudo gluster --mode=script volume delete volume2
+volume delete: volume2: success
+vlad@node1:~$ 
+
+На node1 и node2 очистите старые каталоги бриков:
+vlad@node1:~$ sudo rm -rf /var/brick2
+vlad@node1:~$ 
+
+vlad@node2:~$ sudo rm -rf /var/brick2
+[sudo] пароль для vlad: 
+vlad@node2:~$ 
+
+Шаг 3. LVM на node1 и node2
+
+Выполните на каждом из двух узлов:
+vlad@node1:~$ sudo apt install -y lvm2 xfsprogs thin-provisioning-tools
+Чтение списков пакетов… Готово
+Построение дерева зависимостей… Готово
+Чтение информации о состоянии… Готово         
+Уже установлен пакет xfsprogs самой новой версии (6.1.0-1).
+xfsprogs помечен как установленный вручную.
+Будут установлены следующие дополнительные пакеты:
+  dmeventd libdevmapper-event1.02.1 liblvm2cmd2.03
+Следующие НОВЫЕ пакеты будут установлены:
+  dmeventd libdevmapper-event1.02.1 liblvm2cmd2.03 lvm2 thin-provisioning-tools
+Обновлено 0 пакетов, установлено 5 новых пакетов, для удаления отмечено 0 пакетов, и 0 пакетов не обновлено.
+Необходимо скачать 2 159 kB архивов.
+После данной операции объём занятого дискового пространства возрастёт на 9 171 kB.
+Пол:1 http://deb.debian.org/debian bookworm/main arm64 libdevmapper-event1.02.1 arm64 2:1.02.185-2 [12,2 kB]
+Пол:2 http://deb.debian.org/debian bookworm/main arm64 liblvm2cmd2.03 arm64 2.03.16-2 [632 kB]
+Пол:3 http://deb.debian.org/debian bookworm/main arm64 dmeventd arm64 2:1.02.185-2 [56,7 kB]
+Пол:4 http://deb.debian.org/debian bookworm/main arm64 lvm2 arm64 2.03.16-2 [1 114 kB]
+Пол:5 http://deb.debian.org/debian bookworm/main arm64 thin-provisioning-tools arm64 0.9.0-2 [344 kB]
+Получено 2 159 kB за 6с (363 kB/s)           
+Выбор ранее не выбранного пакета libdevmapper-event1.02.1:arm64.
+(Чтение базы данных … на данный момент установлено 35455 файлов и каталогов.)
+Подготовка к распаковке …/libdevmapper-event1.02.1_2%3a1.02.185-2_arm64.deb …
+Распаковывается libdevmapper-event1.02.1:arm64 (2:1.02.185-2) …
+Выбор ранее не выбранного пакета liblvm2cmd2.03:arm64.
+Подготовка к распаковке …/liblvm2cmd2.03_2.03.16-2_arm64.deb …
+Распаковывается liblvm2cmd2.03:arm64 (2.03.16-2) …
+Выбор ранее не выбранного пакета dmeventd.
+Подготовка к распаковке …/dmeventd_2%3a1.02.185-2_arm64.deb …
+Распаковывается dmeventd (2:1.02.185-2) …
+Выбор ранее не выбранного пакета lvm2.
+Подготовка к распаковке …/lvm2_2.03.16-2_arm64.deb …
+Распаковывается lvm2 (2.03.16-2) …
+Выбор ранее не выбранного пакета thin-provisioning-tools.
+Подготовка к распаковке …/thin-provisioning-tools_0.9.0-2_arm64.deb …
+Распаковывается thin-provisioning-tools (0.9.0-2) …
+Настраивается пакет libdevmapper-event1.02.1:arm64 (2:1.02.185-2) …
+Настраивается пакет thin-provisioning-tools (0.9.0-2) …
+Настраивается пакет liblvm2cmd2.03:arm64 (2.03.16-2) …
+Настраивается пакет dmeventd (2:1.02.185-2) …
+Created symlink /etc/systemd/system/sockets.target.wants/dm-event.socket → /lib/systemd/system/dm-event.socket.
+dm-event.service is a disabled or a static unit, not starting it.
+Настраивается пакет lvm2 (2.03.16-2) …
+Created symlink /etc/systemd/system/sysinit.target.wants/blk-availability.service → /lib/systemd/system/blk-availability.service.
+Created symlink /etc/systemd/system/sysinit.target.wants/lvm2-monitor.service → /lib/systemd/system/lvm2-monitor.service.
+Created symlink /etc/systemd/system/sysinit.target.wants/lvm2-lvmpolld.socket → /lib/systemd/system/lvm2-lvmpolld.socket.
+Обрабатываются триггеры для initramfs-tools (0.142+deb12u3) …
+update-initramfs: Generating /boot/initrd.img-6.1.0-53-arm64
+Обрабатываются триггеры для libc-bin (2.36-9+deb12u14) …
+Обрабатываются триггеры для man-db (2.11.2-2) …
+vlad@node1:~$ sudo pvcreate /dev/sdb
+  Physical volume "/dev/sdb" successfully created.
+vlad@node1:~$ sudo vgcreate vg_brick2 /dev/sdb
+  Volume group "vg_brick2" successfully created
+vlad@node1:~$ sudo lvcreate --type thin-pool -n pool2 -L 8G vg_brick2
+  Thin pool volume with chunk size 64,00 KiB can address at most <15,88 TiB of data.
+  Logical volume "pool2" created.
+vlad@node1:~$ sudo lvcreate -V 6G -T vg_brick2/pool2 -n lv_brick2
+  Logical volume "lv_brick2" created.
+vlad@node1:~$ sudo mkfs.xfs -f /dev/vg_brick2/lv_brick2
+meta-data=/dev/vg_brick2/lv_brick2 isize=512    agcount=8, agsize=196608 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+data     =                       bsize=4096   blocks=1572864, imaxpct=25
+         =                       sunit=16     swidth=16 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=16384, version=2
+         =                       sectsz=512   sunit=16 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+Discarding blocks...Done.
+vlad@node1:~$ sudo mkdir -p /bricks/brick2
+vlad@node1:~$ sudo mount /dev/vg_brick2/lv_brick2 /bricks/brick2
+vlad@node1:~$ sudo mkdir /bricks/brick2/brick
+vlad@node1:~$ 
+
+vlad@node2:~$ sudo apt install -y lvm2 xfsprogs thin-provisioning-tools
+Чтение списков пакетов… Готово
+Построение дерева зависимостей… Готово
+Чтение информации о состоянии… Готово         
+Уже установлен пакет xfsprogs самой новой версии (6.1.0-1).
+xfsprogs помечен как установленный вручную.
+Будут установлены следующие дополнительные пакеты:
+  dmeventd libdevmapper-event1.02.1 liblvm2cmd2.03
+Следующие НОВЫЕ пакеты будут установлены:
+  dmeventd libdevmapper-event1.02.1 liblvm2cmd2.03 lvm2 thin-provisioning-tools
+Обновлено 0 пакетов, установлено 5 новых пакетов, для удаления отмечено 0 пакетов, и 0 пакетов не обновлено.
+Необходимо скачать 2 159 kB архивов.
+После данной операции объём занятого дискового пространства возрастёт на 9 171 kB.
+Пол:1 http://deb.debian.org/debian bookworm/main arm64 libdevmapper-event1.02.1 arm64 2:1.02.185-2 [12,2 kB]
+Пол:2 http://deb.debian.org/debian bookworm/main arm64 liblvm2cmd2.03 arm64 2.03.16-2 [632 kB]
+Пол:3 http://deb.debian.org/debian bookworm/main arm64 dmeventd arm64 2:1.02.185-2 [56,7 kB]
+Пол:4 http://deb.debian.org/debian bookworm/main arm64 lvm2 arm64 2.03.16-2 [1 114 kB]
+Пол:5 http://deb.debian.org/debian bookworm/main arm64 thin-provisioning-tools arm64 0.9.0-2 [344 kB]
+Получено 2 159 kB за 7с (316 kB/s)                                                                   
+Выбор ранее не выбранного пакета libdevmapper-event1.02.1:arm64.
+(Чтение базы данных … на данный момент установлено 35455 файлов и каталогов.)
+Подготовка к распаковке …/libdevmapper-event1.02.1_2%3a1.02.185-2_arm64.deb …
+Распаковывается libdevmapper-event1.02.1:arm64 (2:1.02.185-2) …
+Выбор ранее не выбранного пакета liblvm2cmd2.03:arm64.
+Подготовка к распаковке …/liblvm2cmd2.03_2.03.16-2_arm64.deb …
+Распаковывается liblvm2cmd2.03:arm64 (2.03.16-2) …
+Выбор ранее не выбранного пакета dmeventd.
+Подготовка к распаковке …/dmeventd_2%3a1.02.185-2_arm64.deb …
+Распаковывается dmeventd (2:1.02.185-2) …
+Выбор ранее не выбранного пакета lvm2.
+Подготовка к распаковке …/lvm2_2.03.16-2_arm64.deb …
+Распаковывается lvm2 (2.03.16-2) …
+Выбор ранее не выбранного пакета thin-provisioning-tools.
+Подготовка к распаковке …/thin-provisioning-tools_0.9.0-2_arm64.deb …
+Распаковывается thin-provisioning-tools (0.9.0-2) …
+Настраивается пакет libdevmapper-event1.02.1:arm64 (2:1.02.185-2) …
+Настраивается пакет thin-provisioning-tools (0.9.0-2) …
+Настраивается пакет liblvm2cmd2.03:arm64 (2.03.16-2) …
+Настраивается пакет dmeventd (2:1.02.185-2) …
+Created symlink /etc/systemd/system/sockets.target.wants/dm-event.socket → /lib/systemd/system/dm-event.socket.
+dm-event.service is a disabled or a static unit, not starting it.
+Настраивается пакет lvm2 (2.03.16-2) …
+Created symlink /etc/systemd/system/sysinit.target.wants/blk-availability.service → /lib/systemd/system/blk-availability.service.
+Created symlink /etc/systemd/system/sysinit.target.wants/lvm2-monitor.service → /lib/systemd/system/lvm2-monitor.service.
+Created symlink /etc/systemd/system/sysinit.target.wants/lvm2-lvmpolld.socket → /lib/systemd/system/lvm2-lvmpolld.socket.
+Обрабатываются триггеры для initramfs-tools (0.142+deb12u3) …
+update-initramfs: Generating /boot/initrd.img-6.1.0-53-arm64
+Обрабатываются триггеры для libc-bin (2.36-9+deb12u14) …
+Обрабатываются триггеры для man-db (2.11.2-2) …
+vlad@node2:~$ sudo pvcreate /dev/sdb
+  Physical volume "/dev/sdb" successfully created.
+vlad@node2:~$ sudo vgcreate vg_brick2 /dev/sdb
+  Volume group "vg_brick2" successfully created
+vlad@node2:~$ sudo lvcreate --type thin-pool -n pool2 -L 8G vg_brick2
+  Thin pool volume with chunk size 64,00 KiB can address at most <15,88 TiB of data.
+  Logical volume "pool2" created.
+vlad@node2:~$ sudo lvcreate -V 6G -T vg_brick2/pool2 -n lv_brick2
+  Logical volume "lv_brick2" created.
+vlad@node2:~$ sudo mkfs.xfs -f /dev/vg_brick2/lv_brick2
+meta-data=/dev/vg_brick2/lv_brick2 isize=512    agcount=8, agsize=196608 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1    bigtime=1 inobtcount=1 nrext64=0
+data     =                       bsize=4096   blocks=1572864, imaxpct=25
+         =                       sunit=16     swidth=16 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=16384, version=2
+         =                       sectsz=512   sunit=16 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+Discarding blocks...Done.
+vlad@node2:~$ sudo mkdir -p /bricks/brick2
+vlad@node2:~$ sudo mount /dev/vg_brick2/lv_brick2 /bricks/brick2
+vlad@node2:~$ sudo mkdir /bricks/brick2/brick
+vlad@node2:~$ 
+
+Чтобы монтирование брика пережило перезагрузку, добавьте запись в fstab:
+vlad@node1:~$ echo '/dev/vg_brick2/lv_brick2 /bricks/brick2 xfs defaults,nofail 0 0' | sudo tee -a /etc/fstab
+/dev/vg_brick2/lv_brick2 /bricks/brick2 xfs defaults,nofail 0 0
+vlad@node1:~$ 
+
+vlad@node2:~$ echo '/dev/vg_brick2/lv_brick2 /bricks/brick2 xfs defaults,nofail 0 0' | sudo tee -a /etc/fstab
+/dev/vg_brick2/lv_brick2 /bricks/brick2 xfs defaults,nofail 0 0
+vlad@node2:~$ 
+
+Проверка:
+vlad@node1:~$ lsblk
+NAME                      MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda                         8:0    0   10G  0 disk 
+├─sda1                      8:1    0  512M  0 part /boot/efi
+├─sda2                      8:2    0  8,6G  0 part /
+└─sda3                      8:3    0  947M  0 part [SWAP]
+sdb                         8:16   0   10G  0 disk 
+├─vg_brick2-pool2_tmeta   254:0    0    8M  0 lvm  
+│ └─vg_brick2-pool2-tpool 254:2    0    8G  0 lvm  
+│   ├─vg_brick2-pool2     254:3    0    8G  1 lvm  
+│   └─vg_brick2-lv_brick2 254:4    0    6G  0 lvm  /bricks/brick2
+└─vg_brick2-pool2_tdata   254:1    0    8G  0 lvm  
+  └─vg_brick2-pool2-tpool 254:2    0    8G  0 lvm  
+    ├─vg_brick2-pool2     254:3    0    8G  1 lvm  
+    └─vg_brick2-lv_brick2 254:4    0    6G  0 lvm  /bricks/brick2
+sr0                        11:0    1 1024M  1 rom  
+vlad@node1:~$ sudo lvs
+  LV        VG        Attr       LSize Pool  Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  lv_brick2 vg_brick2 Vwi-aotz-- 6,00g pool2        1,05                                   
+  pool2     vg_brick2 twi-aotz-- 8,00g              0,79   11,08                           
+vlad@node1:~$ df -h /bricks/brick2
+Файловая система                Размер Использовано  Дост Использовано% Cмонтировано в
+/dev/mapper/vg_brick2-lv_brick2   6,0G          75M  5,9G            2% /bricks/brick2
+vlad@node1:~$ 
+
+vlad@node2:~$ lsblk
+NAME                      MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda                         8:0    0   10G  0 disk 
+├─sda1                      8:1    0  512M  0 part /boot/efi
+├─sda2                      8:2    0  8,6G  0 part /
+└─sda3                      8:3    0  947M  0 part [SWAP]
+sdb                         8:16   0   10G  0 disk 
+├─vg_brick2-pool2_tmeta   254:0    0    8M  0 lvm  
+│ └─vg_brick2-pool2-tpool 254:2    0    8G  0 lvm  
+│   ├─vg_brick2-pool2     254:3    0    8G  1 lvm  
+│   └─vg_brick2-lv_brick2 254:4    0    6G  0 lvm  /bricks/brick2
+└─vg_brick2-pool2_tdata   254:1    0    8G  0 lvm  
+  └─vg_brick2-pool2-tpool 254:2    0    8G  0 lvm  
+    ├─vg_brick2-pool2     254:3    0    8G  1 lvm  
+    └─vg_brick2-lv_brick2 254:4    0    6G  0 lvm  /bricks/brick2
+sr0                        11:0    1 1024M  1 rom  
+vlad@node2:~$ sudo lvs
+  LV        VG        Attr       LSize Pool  Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  lv_brick2 vg_brick2 Vwi-aotz-- 6,00g pool2        1,05                                   
+  pool2     vg_brick2 twi-aotz-- 8,00g              0,79   11,08                           
+vlad@node2:~$ df -h /bricks/brick2
+Файловая система                Размер Использовано  Дост Использовано% Cмонтировано в
+/dev/mapper/vg_brick2-lv_brick2   6,0G          75M  5,9G            2% /bricks/brick2
+vlad@node2:~$ 
+
+В выводе lvs должны быть pool2 (тип thin pool) и lv_brick2. Сам брик лежит в подкаталоге /bricks/brick2/brick, а не в точке монтирования: так рекомендует документация, чтобы Gluster не писал данные в корень файловой системы, если диск вдруг не смонтируется.
+
+Шаг 4. Пересоздать volume2
+
+На node1:
+vlad@node1:~$ sudo gluster volume create volume2 node1:/bricks/brick2/brick node2:/bricks/brick2/brick
+volume create: volume2: success: please start the volume to access data
+vlad@node1:~$ sudo gluster volume start volume2
+volume start: volume2: success
+vlad@node1:~$ sudo gluster volume info volume2
+ 
+Volume Name: volume2
+Type: Distribute
+Volume ID: ddf89d4c-28cc-48ff-9afa-a3dbecfc8b95
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/bricks/brick2/brick
+Brick2: node2:/bricks/brick2/brick
+Options Reconfigured:
+storage.fips-mode-rchecksum: on
+transport.address-family: inet
+nfs.disable: on
+vlad@node1:~$ 
+
+На client:
+vlad@client:~$ sudo mount -t glusterfs node1:/volume2 /mnt/volume2
+mount: (hint) your fstab has been modified, but systemd still uses
+       the old version; use 'systemctl daemon-reload' to reload.
+vlad@client:~$ echo "before snapshot" | sudo tee /mnt/volume2/data.txt
+before snapshot
+vlad@client:~$ for i in $(seq 1 5); do echo $i | sudo tee /mnt/volume2/s$i.txt > /dev/null; done
+vlad@client:~$ ls /mnt/volume2
+data.txt  s1.txt  s2.txt  s3.txt  s4.txt  s5.txt
+vlad@client:~$ 
+
+Шаг 6.2 выполнен без замечаний: на node1 и node2 thin-пул pool2 и том lv_brick2 на XFS смонтированы в /bricks/brick2, volume2 пересоздан на LVM-бриках, и на нём лежат 6 тестовых файлов. Подсказка про systemctl daemon-reload безвредна, но выполните на client для порядка:
+vlad@client:~$ sudo systemctl daemon-reload
+vlad@client:~$ 
+
+
+
+
+6.3. Снапшот volume2
+
+Снапшот создаёт LVM-снимок тома на каждом брике одновременно. Для него все брики должны быть в сети.
+
+Создание
+
+На node1:
+vlad@node1:~$ sudo gluster snapshot create snap1 volume2 no-timestamp
+snapshot create: success: Snap snap1 created successfully
+vlad@node1:~$ sudo gluster snapshot list
+snap1
+vlad@node1:~$ sudo gluster snapshot info snap1
+Snapshot                  : snap1
+Snap UUID                 : f84c3f67-d2d9-4a06-a316-6aceb0c1375d
+Created                   : 2026-10-15 20:42:38 +0000
+Snap Volumes:
+
+	Snap Volume Name          : a6824a17bfe74f3baa31064d4b98e7ed
+	Origin Volume name        : volume2
+	Snaps taken for volume2      : 1
+	Snaps available for volume2  : 255
+	Status                    : Stopped
+ 
+vlad@node1:~$ sudo gluster snapshot status snap1
+
+Snap Name : snap1
+Snap UUID : f84c3f67-d2d9-4a06-a316-6aceb0c1375d
+
+	Brick Path        :   node1:/run/gluster/snaps/a6824a17bfe74f3baa31064d4b98e7ed/brick1/brick
+	Volume Group      :   N/A (Deactivated Snapshot)
+	Brick Running     :   No
+	Brick PID         :   N/A
+	Data Percentage   :   N/A
+	LV Size           :   N/A
+
+	Brick Path        :   node2:/run/gluster/snaps/a6824a17bfe74f3baa31064d4b98e7ed/brick2/brick
+	Volume Group      :   N/A (Deactivated Snapshot)
+	Brick Running     :   No
+	Brick PID         :   N/A
+	Data Percentage   :   N/A
+	LV Size           :   N/A
+vlad@node1:~$ 
+
+Ключ no-timestamp убирает дату из имени, поэтому снапшот называется просто snap1 (без него имя было бы вроде snap1_GMT-2026.10.15-..., как в отчёте студента). snapshot info покажет имя исходного тома и состояние, snapshot status покажет LVM-устройства снимков на обоих узлах.
+
+На node1 и node2 посмотрите, что появилось на уровне LVM:
+ad@node1:~$ sudo lvs
+  LV                                 VG        Attr       LSize Pool  Origin    Data%  Meta%  Move Log Cpy%Sync Convert
+  a6824a17bfe74f3baa31064d4b98e7ed_0 vg_brick2 Vwi-a-tz-- 6,00g pool2 lv_brick2 1,06                                   
+  lv_brick2                          vg_brick2 Vwi-aotz-- 6,00g pool2           1,06                                   
+  pool2                              vg_brick2 twi-aotz-- 8,00g                 0,80   11,28                           
+vlad@node1:~$ 
+
+vlad@node2:~$ sudo lvs
+  LV                                 VG        Attr       LSize Pool  Origin    Data%  Meta%  Move Log Cpy%Sync Convert
+  a6824a17bfe74f3baa31064d4b98e7ed_0 vg_brick2 Vwi-a-tz-- 6,00g pool2 lv_brick2 1,06                                   
+  lv_brick2                          vg_brick2 Vwi-aotz-- 6,00g pool2           1,06                                   
+  pool2                              vg_brick2 twi-aotz-- 8,00g                 0,80   11,28                           
+vlad@node2:~$ 
+
+В списке появится новый thin-том (снимок) с атрибутом Vwi-... и колонкой Origin, указывающей на lv_brick2.
+
+Также посмотрите счётчик в информации о томе:
+vlad@node1:~$ sudo gluster volume info volume2 | grep -i snapshot
+Snapshot Count: 1
+vlad@node1:~$ 
+
+vlad@node2:~$ sudo gluster volume info volume2 | grep -i snapshot
+Snapshot Count: 1
+vlad@node2:~$ 
+
+Там должно быть Snapshot Count: 1.
+
+Имитация аварии
+
+На client удалите и измените данные:
+vlad@client:~$ sudo rm /mnt/volume2/data.txt /mnt/volume2/s1.txt
+vlad@client:~$ echo "changed after snapshot" | sudo tee /mnt/volume2/s2.txt
+changed after snapshot
+vlad@client:~$ echo "new file" | sudo tee /mnt/volume2/new.txt
+new file
+vlad@client:~$ ls /mnt/volume2
+new.txt  s2.txt  s3.txt  s4.txt  s5.txt
+vlad@client:~$ cat /mnt/volume2/s2.txt
+changed after snapshot
+vlad@client:~$ 
+
+Восстановление
+
+Откат возможен только при остановленном томе. На client:
+vlad@client:~$ sudo umount /mnt/volume2
+vlad@client:~$ 
+
+На node1:
+vlad@node1:~$ sudo gluster --mode=script volume stop volume2
+volume stop: volume2: success
+vlad@node1:~$ sudo gluster --mode=script snapshot restore snap1
+Snapshot restore: snap1: Snap restored successfully
+vlad@node1:~$ sudo gluster volume start volume2
+volume start: volume2: success
+vlad@node1:~$ sudo gluster snapshot list
+No snapshots present
+vlad@node1:~$ 
+
+После успешного restore снапшот расходуется, и snapshot list покажет, что снапшотов нет. Это нормальное поведение.
+
+На client:
+vlad@client:~$ sudo mount -t glusterfs node1:/volume2 /mnt/volume2
+vlad@client:~$ ls /mnt/volume2
+data.txt  s1.txt  s2.txt  s3.txt  s4.txt  s5.txt
+vlad@client:~$ cat /mnt/volume2/data.txt
+before snapshot
+vlad@client:~$ cat /mnt/volume2/s2.txt
+2
+vlad@client:~$ 
+
+Должны вернуться data.txt (before snapshot) и s1.txt, в s2.txt будет исходное значение 2, а файла new.txt не должно быть.
+
+Удаление снапшота (отдельная демонстрация)
+
+На node1 создайте ещё один снапшот и удалите его:
+vlad@node1:~$ sudo gluster snapshot create snap2 volume2 no-timestamp
+snapshot create: success: Snap snap2 created successfully
+vlad@node1:~$ sudo gluster snapshot list
+snap2
+vlad@node1:~$ sudo gluster --mode=script snapshot delete snap2
+snapshot delete: snap2: snap removed successfully
+vlad@node1:~$ sudo gluster snapshot list
+No snapshots present
+vlad@node1:~$ 
+

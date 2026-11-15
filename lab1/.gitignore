@@ -1,0 +1,14 @@
+# Gradle
+.gradle/
+build/
+app/build/
+app/bin/
+
+# Скомпилированные Java-файлы
+*.class
+*.jar
+*.war
+*.ear
+
+# Исключение для Gradle Wrapper
+!gradle/wrapper/gradle-wrapper.jar

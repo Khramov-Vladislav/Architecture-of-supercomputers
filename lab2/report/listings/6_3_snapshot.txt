@@ -1,0 +1,82 @@
+# Создание снапшота
+vlad@node1:~$ sudo gluster snapshot create snap1 volume2 no-timestamp
+snapshot create: success: Snap snap1 created successfully
+vlad@node1:~$ sudo gluster snapshot list
+snap1
+vlad@node1:~$ sudo gluster snapshot info snap1
+Snapshot                  : snap1
+Snap UUID                 : f84c3f67-d2d9-4a06-a316-6aceb0c1375d
+Created                   : 2026-10-15 20:42:38 +0000
+Snap Volumes:
+
+	Snap Volume Name          : a6824a17bfe74f3baa31064d4b98e7ed
+	Origin Volume name        : volume2
+	Snaps taken for volume2      : 1
+	Snaps available for volume2  : 255
+	Status                    : Stopped
+
+vlad@node1:~$ sudo gluster snapshot status snap1
+
+Snap Name : snap1
+Snap UUID : f84c3f67-d2d9-4a06-a316-6aceb0c1375d
+
+	Brick Path        :   node1:/run/gluster/snaps/a6824a17bfe74f3baa31064d4b98e7ed/brick1/brick
+	Volume Group      :   N/A (Deactivated Snapshot)
+	Brick Running     :   No
+	Brick PID         :   N/A
+	Data Percentage   :   N/A
+	LV Size           :   N/A
+
+	Brick Path        :   node2:/run/gluster/snaps/a6824a17bfe74f3baa31064d4b98e7ed/brick2/brick
+	Volume Group      :   N/A (Deactivated Snapshot)
+	Brick Running     :   No
+	Brick PID         :   N/A
+	Data Percentage   :   N/A
+	LV Size           :   N/A
+
+# Снимки LVM, созданные на каждом брике (node1; на node2 аналогично)
+vlad@node1:~$ sudo lvs
+  LV                                 VG        Attr       LSize Pool  Origin    Data%  Meta%
+  a6824a17bfe74f3baa31064d4b98e7ed_0 vg_brick2 Vwi-a-tz-- 6,00g pool2 lv_brick2 1,06
+  lv_brick2                          vg_brick2 Vwi-aotz-- 6,00g pool2           1,06
+  pool2                              vg_brick2 twi-aotz-- 8,00g                 0,80   11,28
+vlad@node1:~$ sudo gluster volume info volume2 | grep -i snapshot
+Snapshot Count: 1
+
+# Имитация аварии: удаление и изменение файлов
+vlad@client:~$ sudo rm /mnt/volume2/data.txt /mnt/volume2/s1.txt
+vlad@client:~$ echo "changed after snapshot" | sudo tee /mnt/volume2/s2.txt
+changed after snapshot
+vlad@client:~$ echo "new file" | sudo tee /mnt/volume2/new.txt
+new file
+vlad@client:~$ ls /mnt/volume2
+new.txt  s2.txt  s3.txt  s4.txt  s5.txt
+
+# Восстановление из снапшота (том должен быть остановлен)
+vlad@client:~$ sudo umount /mnt/volume2
+vlad@node1:~$ sudo gluster --mode=script volume stop volume2
+volume stop: volume2: success
+vlad@node1:~$ sudo gluster --mode=script snapshot restore snap1
+Snapshot restore: snap1: Snap restored successfully
+vlad@node1:~$ sudo gluster volume start volume2
+volume start: volume2: success
+vlad@node1:~$ sudo gluster snapshot list
+No snapshots present
+
+vlad@client:~$ sudo mount -t glusterfs node1:/volume2 /mnt/volume2
+vlad@client:~$ ls /mnt/volume2
+data.txt  s1.txt  s2.txt  s3.txt  s4.txt  s5.txt
+vlad@client:~$ cat /mnt/volume2/data.txt
+before snapshot
+vlad@client:~$ cat /mnt/volume2/s2.txt
+2
+
+# Создание и удаление ещё одного снапшота
+vlad@node1:~$ sudo gluster snapshot create snap2 volume2 no-timestamp
+snapshot create: success: Snap snap2 created successfully
+vlad@node1:~$ sudo gluster snapshot list
+snap2
+vlad@node1:~$ sudo gluster --mode=script snapshot delete snap2
+snapshot delete: snap2: snap removed successfully
+vlad@node1:~$ sudo gluster snapshot list
+No snapshots present

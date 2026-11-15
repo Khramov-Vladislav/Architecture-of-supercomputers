@@ -1,0 +1,16 @@
+# VirtualBox (диски ВМ, состояния и логи)
+virtual-machines/
+*.vdi
+*.vmdk
+*.vhd
+*.vbox
+*.vbox-prev
+*.nvram
+*.sav
+Logs/
+VBox*.log*
+
+# Текстовые заметки 
+часть *.txt
+arh-lab2.md
+demo-commands.md

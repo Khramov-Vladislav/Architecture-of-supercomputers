@@ -1,0 +1,19 @@
+% !TEX root = main.tex
+% !TEX program = pdflatex
+% Сборка: pdflatex (или latexmk) -- дважды, для содержания и ссылок
+\input{preamble}   % ваша стандартная преамбула (содержит \documentclass)
+\input{extras}     % макросы этого отчёта
+
+\begin{document}
+
+\input{titlepage}
+
+\tableofcontents
+\newpage
+
+\input{sections/00_intro}
+\input{sections/01_task}
+\input{sections/02_work}
+\input{sections/03_conclusion}
+
+\end{document}

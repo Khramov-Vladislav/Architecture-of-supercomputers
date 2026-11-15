@@ -1,0 +1,44 @@
+# Отключение задержки проверки квоты
+vlad@node1:~$ sudo gluster volume set volume1 features.soft-timeout 0
+volume set: success
+vlad@node1:~$ sudo gluster volume set volume1 features.hard-timeout 0
+volume set: success
+
+# Квота на весь том (10 МБ)
+vlad@client:~$ sudo mkdir /mnt/volume1/dir1
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/big.bin bs=1M count=20
+dd: ошибка записи '/mnt/volume1/big.bin': Превышена дисковая квота
+dd: закрытие выходного файла '/mnt/volume1/big.bin': Превышена дисковая квота
+vlad@client:~$ ls -lh /mnt/volume1
+итого 11M
+-rw-r--r-- 1 root root  11M окт 15 23:12 big.bin
+drwxr-xr-x 2 root root 4,0K окт 15 23:12 dir1
+-rw-r--r-- 1 root root   13 окт  8 23:53 test0.txt
+
+vlad@node1:~$ sudo gluster volume quota volume1 list
+Path  Hard-limit  Soft-limit    Used  Available  Soft-limit exceeded?  Hard-limit exceeded?
+/       10.0MB    80%(8.0MB)  10.5MB   0Bytes                   Yes                   Yes
+vlad@client:~$ sudo rm -f /mnt/volume1/big.bin
+
+# Квота на каталог (2 МБ)
+vlad@node1:~$ sudo gluster volume quota volume1 limit-usage /dir1 2MB
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 list
+Path   Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded?  Hard-limit exceeded?
+/        10.0MB    80%(8.0MB)  512Bytes     10.0MB                    No                    No
+/dir1     2.0MB    80%(1.6MB)    0Bytes      2.0MB                    No                    No
+
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/dir1/f.bin bs=1M count=5
+dd: ошибка записи '/mnt/volume1/dir1/f.bin': Превышена дисковая квота
+dd: закрытие выходного файла '/mnt/volume1/dir1/f.bin': Превышена дисковая квота
+vlad@client:~$ ls -lh /mnt/volume1/dir1
+итого 3,0M
+-rw-r--r-- 1 root root 3,0M окт 15 23:14 f.bin
+
+# Очистка: удаление файла и квоты на каталог
+vlad@client:~$ sudo rm -f /mnt/volume1/dir1/f.bin
+vlad@node1:~$ sudo gluster volume quota volume1 remove /dir1
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 list
+Path  Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded?  Hard-limit exceeded?
+/       10.0MB    80%(8.0MB)  512Bytes     10.0MB                    No                    No

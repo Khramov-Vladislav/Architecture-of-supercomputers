@@ -1,0 +1,35 @@
+% !TEX root = main.tex
+% !TEX program = pdflatex
+% Дополнения к основной преамбуле (preamble.tex не меняется).
+% Здесь только то, что нужно для этого отчёта.
+
+\usepackage[export]{adjustbox}   % max width / max height для скриншотов
+\usepackage[font=small,labelsep=endash]{caption}
+\captionsetup[figure]{justification=centering}
+
+% \fig{имя файла в images/}{подпись}{метка}
+\newcommand{\fig}[3]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[max width=\linewidth,max height=0.38\textheight]{images/#1}
+    \caption{#2}\label{#3}
+  \end{figure}}
+
+% \code{...}: команда или имя в тексте (с переносом по строкам)
+\PassOptionsToPackage{obeyspaces,spaces}{url}
+\usepackage{xurl}
+\urlstyle{tt}
+\newcommand{\code}[1]{\path{#1}}
+
+% Листинги терминала (fancyvrb/fvextra: корректно работают с UTF-8 и кириллицей)
+\usepackage{fvextra}
+\fvset{fontsize=\scriptsize,breaklines=true,breakanywhere=true,
+       frame=leftline,framesep=3mm,rulecolor=\color{gray}}
+% короткий блок команд внутри текста
+\DefineVerbatimEnvironment{cmd}{Verbatim}{}
+% \lstfile{файл в listings/}{подпись}
+\newcounter{lstnum}
+\newcommand{\lstfile}[2]{%
+  \refstepcounter{lstnum}%
+  \par\medskip\noindent\textbf{Листинг \thelstnum\ \textendash\ #2}\par\nopagebreak\smallskip
+  \VerbatimInput{listings/#1}\par\medskip}

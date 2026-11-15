@@ -1,0 +1,22 @@
+vlad@node1:~$ sudo gluster volume quota volume1 enable
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 limit-usage / 10MB
+volume quota : success
+vlad@node1:~$ sudo gluster volume quota volume1 list
+Path  Hard-limit  Soft-limit      Used  Available  Soft-limit exceeded?  Hard-limit exceeded?
+/       10.0MB    80%(8.0MB)  512Bytes     10.0MB                    No                    No
+
+# Запись 20 МБ при настройках задержки по умолчанию
+vlad@client:~$ sudo dd if=/dev/zero of=/mnt/volume1/big.bin bs=1M count=20
+20+0 records in
+20+0 records out
+20971520 bytes (21 MB, 20 MiB) copied, 0,101608 s, 206 MB/s
+vlad@client:~$ df -h /mnt/volume1
+Файловая система Размер Использовано  Дост Использовано% Cмонтировано в
+node1:/volume1      10M          10M     0          100% /mnt/volume1
+vlad@client:~$ sudo mkdir /mnt/volume1/dir1
+mkdir: невозможно создать каталог «/mnt/volume1/dir1»: Превышена дисковая квота
+
+vlad@node1:~$ sudo gluster volume quota volume1 list
+Path  Hard-limit  Soft-limit    Used  Available  Soft-limit exceeded?  Hard-limit exceeded?
+/       10.0MB    80%(8.0MB)  20.0MB   0Bytes                   Yes                   Yes

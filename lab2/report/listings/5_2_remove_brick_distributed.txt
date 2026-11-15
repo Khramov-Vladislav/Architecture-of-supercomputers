@@ -1,0 +1,39 @@
+vlad@node1:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 start
+It is recommended that remove-brick be run with cluster.force-migration option disabled to prevent possible data corruption. Doing so will ensure that files that receive writes during migration will not be migrated and will need to be manually copied after the remove-brick commit operation. Please check the value of the option and update accordingly.
+Do you want to continue with your current cluster.force-migration settings? (y/n) y
+volume remove-brick start: success
+ID: 0863187a-dcd8-4776-8792-05b46a14c175
+
+vlad@node1:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 status
+   Node  Rebalanced-files      size  scanned  failures  skipped     status  run time
+  ------ ----------------  --------  -------  --------  -------  ---------  --------
+  node3                11   30Bytes       11         0        0  completed   0:00:00
+
+vlad@node1:~$ sudo gluster volume remove-brick volume2 node3:/var/brick2 commit
+volume remove-brick commit: success
+Check the removed bricks to ensure all files are migrated.
+If files with data are found on the brick path, copy them via a gluster mount point before re-purposing the removed brick.
+
+vlad@node1:~$ sudo gluster volume info volume2
+
+Volume Name: volume2
+Type: Distribute
+Volume ID: 8935aa8b-cb60-4272-a004-e00c0326ffbb
+Status: Started
+Snapshot Count: 0
+Number of Bricks: 2
+Transport-type: tcp
+Bricks:
+Brick1: node1:/var/brick2
+Brick2: node2:/var/brick2
+Options Reconfigured:
+performance.client-io-threads: on
+nfs.disable: on
+transport.address-family: inet
+storage.fips-mode-rchecksum: on
+
+# Данные не потеряны
+vlad@client:~$ ls /mnt/volume2 | wc -l
+40
+vlad@node3:~$ ls /var/brick2 | wc -l
+0

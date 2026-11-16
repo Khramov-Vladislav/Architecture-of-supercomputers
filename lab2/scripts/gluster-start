@@ -1,0 +1,37 @@
+#!/bin/bash
+
+VMS=("gluster-node1" "gluster-node2" "gluster-node3" "gluster-client")
+SSH_HOSTS=("node1" "node2" "node3" "client")
+SSH_USER="vlad"
+
+for i in "${!VMS[@]}"; do
+    VM="${VMS[$i]}"
+
+    if VBoxManage list runningvms | grep -q "\"$VM\""; then
+        echo "$VM is already running."
+    else
+        echo "Starting $VM..."
+
+        VBoxManage startvm "$VM" --type headless || {
+            echo "Failed to start $VM."
+            exit 1
+        }
+    fi
+done
+
+echo
+echo "Waiting for SSH..."
+
+for HOST in "${SSH_HOSTS[@]}"; do
+    echo "Waiting for $HOST..."
+
+    until ssh -o BatchMode=yes -o ConnectTimeout=2 "$SSH_USER@$HOST" true 2>/dev/null; do
+        sleep 1
+    done
+
+    echo "$HOST: SSH is ready."
+done
+
+echo
+echo "All VMs are running and SSH is ready."
+echo "Connect using: ssh node1 | ssh node2 | ssh node3 | ssh client"

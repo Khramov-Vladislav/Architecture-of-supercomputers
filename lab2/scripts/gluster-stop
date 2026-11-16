@@ -1,0 +1,29 @@
+#!/bin/bash
+
+VMS=("gluster-client" "gluster-node1" "gluster-node2" "gluster-node3")
+SSH_HOSTS=("client" "node1" "node2" "node3")
+SSH_USER="vlad"
+
+for i in "${!VMS[@]}"; do
+    VM="${VMS[$i]}"
+    HOST="${SSH_HOSTS[$i]}"
+
+    if ! VBoxManage list runningvms | grep -q "\"$VM\""; then
+        echo "$VM is not running."
+        continue
+    fi
+
+    echo "Stopping $VM..."
+
+    ssh -t "$SSH_USER@$HOST" "sudo -n systemctl poweroff" 2>/dev/null
+
+    echo "Waiting for $VM to stop..."
+
+    while VBoxManage list runningvms | grep -q "\"$VM\""; do
+        sleep 1
+    done
+
+    echo "$VM stopped."
+done
+
+echo "All VMs stopped."

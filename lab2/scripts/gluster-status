@@ -1,0 +1,11 @@
+#!/bin/bash
+
+VMS=("gluster-node1" "gluster-node2" "gluster-node3" "gluster-client")
+
+for VM in "${VMS[@]}"; do
+    if VBoxManage list runningvms | grep -q "\"$VM\""; then
+        echo "[RUNNING] $VM"
+    else
+        echo "[STOPPED] $VM"
+    fi
+done

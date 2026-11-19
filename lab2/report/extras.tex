@@ -14,22 +14,15 @@
     \includegraphics[max width=\linewidth,max height=0.38\textheight]{images/#1}
     \caption{#2}\label{#3}
   \end{figure}}
+\newcommand{\figlarge}[3]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[max width=\linewidth,max height=0.75\textheight]{images/#1}
+    \caption{#2}\label{#3}
+  \end{figure}}
 
 % \code{...}: команда или имя в тексте (с переносом по строкам)
 \PassOptionsToPackage{obeyspaces,spaces}{url}
 \usepackage{xurl}
 \urlstyle{tt}
 \newcommand{\code}[1]{\path{#1}}
-
-% Листинги терминала (fancyvrb/fvextra: корректно работают с UTF-8 и кириллицей)
-\usepackage{fvextra}
-\fvset{fontsize=\scriptsize,breaklines=true,breakanywhere=true,
-       frame=leftline,framesep=3mm,rulecolor=\color{gray}}
-% короткий блок команд внутри текста
-\DefineVerbatimEnvironment{cmd}{Verbatim}{}
-% \lstfile{файл в listings/}{подпись}
-\newcounter{lstnum}
-\newcommand{\lstfile}[2]{%
-  \refstepcounter{lstnum}%
-  \par\medskip\noindent\textbf{Листинг \thelstnum\ \textendash\ #2}\par\nopagebreak\smallskip
-  \VerbatimInput{listings/#1}\par\medskip}

@@ -2,13 +2,7 @@
 % !TEX program = pdflatex
 \subsection{Пул системы хранения: добавление и удаление узлов}
 
-Пул (trusted storage pool) формируется командой \code{gluster peer probe}, которая выполняется на одном из узлов. На \code{node1} в пул добавлены \code{node2} и \code{node3}:
-\begin{cmd}
-sudo gluster peer probe node2
-sudo gluster peer probe node3
-sudo gluster peer status
-sudo gluster pool list
-\end{cmd}
+Пул (trusted storage pool) сформирован на узле \code{node1}; в него добавлены \code{node2} и \code{node3}.
 
 Результат показан на рисунках~\ref{fig:probe}--\ref{fig:status2}: все узлы находятся в состоянии \code{Connected}, список пула одинаков на всех узлах.
 
@@ -16,13 +10,7 @@ sudo gluster pool list
 \fig{3.2. Проверить состояние.png}{Состояние пула на node1}{fig:status1}
 \fig{3.2. Проверить состояние (на node2).png}{Состояние пула на node2}{fig:status2}
 
-Для удаления узла из пула используется команда \code{gluster peer detach}. Узел можно удалить только в том случае, если на нём нет бриков существующих томов. Узел \code{node3} удалён из пула (рисунок~\ref{fig:detach}), после чего добавлен обратно командой \code{peer probe} (рисунок~\ref{fig:reprobe}):
-\begin{cmd}
-sudo gluster peer detach node3
-sudo gluster pool list
-sudo gluster peer probe node3
-sudo gluster pool list
-\end{cmd}
+Узел можно удалить из пула только при отсутствии на нём бриков существующих томов. Узел \code{node3} удалён из пула, а затем добавлен обратно (рисунки~\ref{fig:detach} и~\ref{fig:reprobe}).
 
 \fig{3.3. Удалить узел из пула.png}{Удаление узла node3 из пула}{fig:detach}
 \fig{3.4. Вернуть узел обратно.png}{Повторное добавление узла node3 в пул}{fig:reprobe}

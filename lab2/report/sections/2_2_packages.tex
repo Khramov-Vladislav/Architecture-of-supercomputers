@@ -2,17 +2,9 @@
 % !TEX program = pdflatex
 \subsection{Установка и настройка пакетов}
 
-На серверных узлах \code{node1}, \code{node2}, \code{node3} установлен пакет \code{glusterfs-server} и запущена служба \code{glusterd}:
-\begin{cmd}
-sudo apt update
-sudo apt install -y glusterfs-server
-sudo systemctl enable --now glusterd
-\end{cmd}
+На серверных узлах \code{node1}, \code{node2}, \code{node3} установлен пакет \code{glusterfs-server} и запущена служба \code{glusterd}.
 
-На клиентском узле \code{client} установлен пакет \code{glusterfs-client}:
-\begin{cmd}
-sudo apt install -y glusterfs-client
-\end{cmd}
+На клиентском узле \code{client} установлен пакет \code{glusterfs-client}.
 
 Служба \code{glusterd} на клиенте не нужна: клиент лишь монтирует тома. Установлена версия GlusterFS~10.3. Исполняемые файлы \code{gluster} и \code{glusterd} находятся в каталоге \code{/usr/sbin}, которого нет в \code{PATH} обычного пользователя Debian~12, поэтому команды управления кластером выполняются через \code{sudo}.
 

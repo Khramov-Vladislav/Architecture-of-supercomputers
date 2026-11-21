@@ -1,0 +1,24 @@
+sequential n=257 rank=0/1 threads=1
+openmp n=257 rank=0/1 threads=4
+mpi n=257 rank=0/2 threads=1 host=node-a
+mpi n=257 rank=1/2 threads=1 host=node-b
+hybrid n=257 rank=0/2 threads=2 host=node-a
+hybrid n=257 rank=1/2 threads=2 host=node-b
+sequential n=512 rank=0/1 threads=1
+openmp n=512 rank=0/1 threads=4
+mpi n=512 rank=0/2 threads=1 host=node-a
+mpi n=512 rank=1/2 threads=1 host=node-b
+hybrid n=512 rank=1/2 threads=2 host=node-b
+hybrid n=512 rank=0/2 threads=2 host=node-a
+sequential n=1024 rank=0/1 threads=1
+openmp n=1024 rank=0/1 threads=4
+mpi n=1024 rank=1/2 threads=1 host=node-b
+mpi n=1024 rank=0/2 threads=1 host=node-a
+hybrid n=1024 rank=1/2 threads=2 host=node-b
+hybrid n=1024 rank=0/2 threads=2 host=node-a
+sequential n=2048 rank=0/1 threads=1
+openmp n=2048 rank=0/1 threads=4
+mpi n=2048 rank=1/2 threads=1 host=node-b
+mpi n=2048 rank=0/2 threads=1 host=node-a
+hybrid n=2048 rank=1/2 threads=2 host=node-b
+hybrid n=2048 rank=0/2 threads=2 host=node-a

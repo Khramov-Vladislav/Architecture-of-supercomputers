@@ -1,0 +1,7 @@
+Docker Engine 29.8.0
+Image sha256:87ece8db08d3623a791a0ea4ee253489ad79b877c9f3a89df93ec915fe05a3d4 (linux/arm64)
+CPU set allowed on both nodes: 0-3
+Ubuntu 24.04.5 LTS
+aarch64
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+mpirun (Open MPI) 4.1.6

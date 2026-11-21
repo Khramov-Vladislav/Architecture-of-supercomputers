@@ -1,70 +1,37 @@
-\documentclass[a4paper,14pt]{extarticle}
-\usepackage{fontspec}
-\IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}}{\setmainfont{DejaVu Serif}}
-\setmonofont{DejaVuSansMono.ttf}
-\usepackage[russian]{babel}
-\usepackage[left=30mm,right=15mm,top=20mm,bottom=20mm]{geometry}
-\usepackage{amsmath,amssymb,booktabs,enumitem,indentfirst,setspace,pgfplots,float,xurl}
-\usepackage[labelsep=endash]{caption}
-\usepackage[hidelinks]{hyperref}
-\hypersetup{pdftitle={Умножение матриц с OpenMP и MPI},pdfauthor={Храмов В. Д.}}
-\pgfplotsset{compat=1.18}
-\onehalfspacing
-\setlength{\parindent}{1.25cm}
-\setlength{\emergencystretch}{2em}
-\input{build/measurements.tex}
+% !TEX root = main.tex
+% !TEX program = xelatex
+\input{preamble}
 
 \begin{document}
 
-\begin{titlepage}
-\centering
-МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ \\
-РОССИЙСКОЙ ФЕДЕРАЦИИ\par
-\vspace{0.7em}
-Санкт-Петербургский политехнический университет Петра Великого\par
-Институт компьютерных наук и кибербезопасности\par
-Высшая школа технологий искусственного интеллекта\par
-Направление 02.03.01 «Математика и компьютерные науки»\par
-\vfill
-{\Large\bfseries КУРСОВАЯ РАБОТА\par}
-\vspace{0.7em}
-по дисциплине «Архитектура суперкомпьютеров»\par
-\vspace{0.7em}
-{\Large\bfseries Умножение матриц с OpenMP и MPI\par}
-\vfill
-\begin{flushright}
-\begin{tabular}{@{}l@{}}
-Выполнил студент группы 5130201/40101 \\
-Храмов В. Д. \\[1em]
-Проверил \\
-Чуватов М. В.
-\end{tabular}
-\end{flushright}
-\vfill
-Санкт-Петербург\par
-2026
-\end{titlepage}
+\input{titlepage}
 
-\setcounter{page}{2}
 \tableofcontents
 \clearpage
 
+\section*{Введение}
+\addcontentsline{toc}{section}{Введение}
+
+При умножении плотных матриц строки результата вычисляются независимо. На одном узле вычисления можно распределить между потоками с общей памятью. При запуске на нескольких узлах требуется также распределить входные данные и собрать результат. В данной работе эти схемы сравниваются на примере одного алгоритма умножения.
+
+Работа выполнялась в Docker Desktop на ноутбуке MacBook Air с процессором Apple~M2. В качестве узлов использованы два контейнера Ubuntu~24.04.5 LTS (ARM64).
+
 \section{Постановка задачи}
 
-Цель работы --- исследовать, как распределение вычислений между потоками и процессами влияет на время умножения плотных матриц. По заданию требуется последовательно реализовать четыре режима, сравнить время выполнения и проверить совпадение результатов~\cite{task}.
+Цель данной работы~--- исследовать производительность параллельного умножения плотных целочисленных матриц. В соответствии с заданием~\cite{task} требуется выполнить следующие шаги.
 
-Для двух квадратных матриц $A,B \in \mathbb{Z}^{N \times N}$ необходимо вычислить
-\begin{equation}
-  C=AB, \qquad c_{ij}=\sum_{k=0}^{N-1} a_{ik} b_{kj}, \qquad 0\le i,j<N.
-  \label{eq:product}
-\end{equation}
-Все четыре режима используют прямой алгоритм по формуле~\eqref{eq:product}, одни и те же входные данные и одинаковый порядок вычисления каждого элемента.
+\begin{enumerate}
+  \item Реализовать последовательное умножение и получить эталонный результат.
+  \item Реализовать варианты с OpenMP, MPI и совместным применением MPI и OpenMP.
+  \item Проверить результаты параллельных вариантов и сравнить время выполнения.
+\end{enumerate}
+
+В таблице~\ref{tab:configs} приведены конфигурации запуска. Число потоков указано для одного процесса. В режимах с MPI на каждом узле запускается по одному процессу.
 
 \begin{table}[H]
 \centering
-\caption{Конфигурации запуска}
-\label{tab:configs}
 \small
+\caption{Конфигурации запуска}\label{tab:configs}
 \begin{tabular}{@{}lccc@{}}
 \toprule
 Режим & Узлы & Процессы & Потоки на процесс \\
@@ -77,127 +44,59 @@ MPI + OpenMP & 2 & 2 & 2 \\
 \end{tabular}
 \end{table}
 
-Каждый элемент $C$ требует $N$ умножений и $N$ сложений с аккумулятором, который начинается с нуля. Поэтому программа выполняет $N^3$ скалярных умножений и столько же сложений, а объём данных трёх матриц пропорционален $N^2$. Для вычисления строки $C$ нужны соответствующая строка $A$ и вся матрица $B$. Строки результата независимы, поэтому их удобно распределять между исполнителями.
-
 \clearpage
-\section{Реализация}
+\input{implementation}
+\input{experiment}
+\input{discussion}
 
-\subsection{Последовательное ядро и OpenMP}
+\section{Заключение}
 
-Матрицы хранятся в одномерных массивах типа \texttt{int32\_t}. Элементы генерируются детерминированно генератором xorshift32 с начальным состоянием 2026 и значениями от $-9$ до $9$. Матрица $B$ сразу записывается в транспонированном виде. При умножении ядро проходит по строке $A$ и строке $B^\mathsf{T}$ с единичным шагом. Элементы обоих массивов читаются последовательно, что улучшает пространственную локальность.
+В ходе курсовой работы на языке C++ реализовано умножение матриц в четырёх режимах. Во всех 112 измерениях получено точное совпадение с последовательным результатом. При $N=2048$ получено ускорение в $3{,}77$ раза для OpenMP, в $1{,}93$ раза для MPI и в $3{,}62$ раза для гибридного режима.
 
-Для настроенного предела $N\le4096$ модуль любого произведения ограничен 81, модуль промежуточной суммы --- $81\cdot4096=331\,776$. Поэтому аккумулятор \texttt{int32\_t} сохраняет точный результат. Исходные матрицы и готовый блок строк представлены одинаково во всех режимах.
-
-OpenMP создаёт команду потоков в области \texttt{parallel}, а директива \texttt{for schedule(static)} распределяет строки $C$ между ними~\cite{openmp}. Потоки читают общие входные массивы и записывают непересекающиеся строки результата. Аккумулятор создаётся внутри тела цикла и используется одним потоком. Статическое распределение подходит для этой задачи, поскольку на каждую строку приходится одинаковый объём работы.
-
-\subsection{MPI и гибридный режим}
-
-В \texttt{MPI\_COMM\_WORLD} каждому процессу присваивается ранг от 0 до $P-1$, где $P$ --- число процессов~\cite{mpi}. Ранг 0 создаёт входные матрицы и выделяет память под итоговую матрицу. При $N=Pq+r$, где $0\le r<P$, первые $r$ рангов получают по $q+1$ строке, остальные --- по $q$. Разность размеров блоков ограничена одной строкой. Размер 257 в эксперименте проверяет случай, когда строки делятся не поровну.
-
-\begin{samepage}
-В каждой итерации процессы выполняют следующие действия.
-\begin{enumerate}[nosep]
-  \item \texttt{MPI\_Bcast} рассылает полную матрицу $B^\mathsf{T}$.
-  \item \texttt{MPI\_Scatterv} раздаёт последовательные блоки строк $A$ с учётом числа строк у каждого ранга.
-  \item Каждый ранг вычисляет свой блок $C$ общим ядром умножения. В гибридном режиме строки блока делятся между потоками OpenMP.
-  \item \texttt{MPI\_Gatherv} собирает блоки $C$ в исходном порядке строк на ранге 0.
-\end{enumerate}
-\end{samepage}
-
-Гибридный вариант запрашивает уровень \texttt{MPI\_THREAD\_FUNNELED}. Вызовы MPI выполняет поток, инициализировавший MPI, а вычислительная область OpenMP завершает работу перед сбором строк. Четыре исполняемых файла собираются из \path{src/matmul.cpp}. Флаги сборки включают OpenMP и MPI по отдельности или совместно.
-
-При двух рангах передача массива $B^\mathsf{T}$ занимает $4N^2$ байт. Удалённый блок $A$ и его результат $C$ занимают по $4N\lfloor N/2\rfloor$ байт. Для $N=2048$ это 32 МиБ полезных данных на одно умножение. Служебные сообщения и заголовки TCP увеличивают фактический объём трафика.
-
-\section{Методика эксперимента}
-
-\subsection{Стенд}
-
-Эксперимент проведён в Ubuntu 24.04 для ARM64 в Docker Desktop на MacBook Air с Apple M2. Два контейнера \texttt{node-a} и \texttt{node-b} имеют разные сетевые пространства имён и соединены изолированной виртуальной сетью. Для MPI выбран транспорт TCP. Обоим контейнерам доступны одни и те же четыре виртуальных процессора. Последовательный режим и OpenMP выполняются на \texttt{node-a}. Для MPI и гибридного режима запускается по одному рангу на каждом контейнерном узле. Имена узлов и фактическое число потоков записаны в \path{results/placement.txt}.
-
-Сборка выполнена на \texttt{node-a} компилятором GNU C++~13.3.0 с флагами \texttt{-O3} и \texttt{-std=c++17}. Для параллельных вариантов использованы GNU OpenMP и Open MPI~4.1.6~\cite{ompi}. На втором узле запускается копия файла с первого. Паспорт стенда хранится в \path{results/environment.txt}.
-
-\subsection{Измерение времени и правильности}
-
-Для каждого $N\in\{257,512,1024,2048\}$ выполняется один прогрев и семь измерений на конфигурацию. Таймер \texttt{steady\_clock} измеряет время ядра в последовательном режиме и в OpenMP. В MPI-режимах барьер выравнивает начало итерации. После барьера \texttt{MPI\_Wtime} измеряет длительность рассылки, вычислений и сбора на каждом ранге. По окончании итерации \texttt{MPI\_Reduce} выбирает максимум локальных длительностей~\cite{mpi}.
-
-Генерация матриц, выделение основных массивов, старт процессов, проверка и запись CSV вынесены за пределы таймера. Последовательный прогрев формирует эталонную матрицу. Для каждого измерения программа сравнивает все элементы результата с эталоном и при первом несовпадении сообщает координаты. Серии замеров на стенде выполняются по очереди.
-
-Для каждого размера берётся медиана времени $T$ по семи повторам. Ускорение $S$ и эффективность $E$ вычисляются по формулам
-\begin{equation}
-    S=\frac{T_{\text{посл}}}{T}, \qquad E=\frac{S}{p},
-    \label{eq:metrics}
-\end{equation}
-где $p$ --- число вычислительных исполнителей из таблицы~\ref{tab:configs}. Оно равно 4 для OpenMP и гибридного режима и 2 для MPI. Медианы, минимумы и максимумы серий доступны в \path{results/summary.csv}.
-
-\clearpage
-\section{Результаты и обсуждение}
-
-\begin{table}[H]
-\centering
-\caption{Медианное время умножения, мс}
-\label{tab:time}
-\small
-\begin{tabular}{@{}rrrrr@{}}
-\toprule
-$N$ & Последовательно & OpenMP & MPI & MPI + OpenMP \\
-\midrule
-\TimeRows
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-    width=0.94\textwidth,height=7.1cm,
-    xlabel={Размер матрицы $N$},ylabel={Ускорение $S$},
-    xtick=data,xticklabel style={/pgf/number format/1000 sep={}},
-    ymin=0,ymajorgrids,grid style={gray!25},
-    legend style={at={(0.5,-0.23)},anchor=north,legend columns=3,font=\small,draw=none},
-    table/col sep=comma,
-]
-\addplot[blue!70!black,thick,mark=*] table[x=n,y=openmp] {build/speedup.csv};
-\addlegendentry{OpenMP}
-\addplot[orange!80!black,thick,mark=square*] table[x=n,y=mpi] {build/speedup.csv};
-\addlegendentry{MPI}
-\addplot[teal!75!black,thick,mark=triangle*] table[x=n,y=hybrid] {build/speedup.csv};
-\addlegendentry{MPI + OpenMP}
-\end{axis}
-\end{tikzpicture}
-\caption{Ускорение относительно последовательного режима}
-\label{fig:speedup}
-\end{figure}
-
-Во всех 112 измерениях результаты совпали с последовательным эталоном. В MPI и гибридном режиме журнал подтвердил по одному процессу на каждом из двух контейнерных узлов. При $N=257$ первый ранг обрабатывал 129 строк, второй --- 128.
-
-\input{discussion.tex}
-
-\clearpage
-\section{Воспроизведение эксперимента}
-
-Сценарий \path{bench/docker/run.sh} собирает программу в Ubuntu, запускает измерения на двух контейнерных узлах и сохраняет результаты. После работы он удаляет временные контейнеры, сеть и том запуска. Команды выполняются из каталога \path{course_work}.
-
-\begin{verbatim}
-bash bench/docker/run.sh
-make report
-\end{verbatim}
-
-Для запуска на двух Linux-узлах установите совместимые версии Open MPI и настройте доступ по SSH. Соберите варианты командой \texttt{make} на первом узле и скопируйте каталог \texttt{build} на второй по тому же абсолютному пути. С первого узла запустите измерения.
-
-\begin{verbatim}
-bash bench/run.sh --host node-a:1,node-b:1
-\end{verbatim}
-
-Каталог \path{results} содержит исходные замеры и журнал размещения. Сценарий \path{bench/summarize.py} проверяет их, формирует сводку, таблицу и данные графика для LaTeX.
+Измерения MPI проведены на двух контейнерных узлах одного компьютера. Для оценки ускорения на физических узлах необходимы измерения на отдельном стенде.
 
 \renewcommand{\refname}{Список источников}
+\begin{spacing}{1.2}
 \begin{thebibliography}{9}
 \addcontentsline{toc}{section}{Список источников}
-\bibitem{task} Устное задание к курсовой работе по дисциплине «Архитектура суперкомпьютеров» и фотографии доски. Исходные материалы в каталоге \path{course_work/materials}, 2026.
+\raggedright
+\bibitem{task} Устное задание к курсовой работе по дисциплине «Архитектура суперкомпьютеров» и фотографии доски. Каталог \code{course_work/materials}, 2026.
 \bibitem{openmp} OpenMP Architecture Review Board. OpenMP Application Programming Interface, версия 5.2. \href{https://www.openmp.org/spec-html/5.2/openmp.html}{Спецификация OpenMP}.
 \bibitem{mpi} MPI Forum. MPI: A Message-Passing Interface Standard, версия 4.1. \href{https://www.mpi-forum.org/docs/mpi-4.1/mpi41-report.pdf}{Стандарт MPI}.
 \bibitem{ompi} Open MPI Project. \href{https://www.open-mpi.org/doc/v4.1/}{Документация Open MPI 4.1}.
 \end{thebibliography}
+\end{spacing}
+
+\clearpage
+\appendix
+\section{Фрагменты программы}
+
+В листингах~\ref{lst:kernel} и~\ref{lst:mpi} приведены фрагменты файла \code{src/matmul.cpp}. Номера строк соответствуют исходному файлу.
+
+\lstinputlisting[language=C++,firstline=66,lastline=91,firstnumber=66,
+    caption={Ядро умножения и распределение строк между потоками},
+    label={lst:kernel}]{../src/matmul.cpp}
+
+\lstinputlisting[language=C++,firstline=182,lastline=194,firstnumber=182,
+    caption={Обмен данными и измерение времени в MPI},
+    label={lst:mpi}]{../src/matmul.cpp}
+
+\clearpage
+\section{Сборка и запуск}
+
+Измерения воспроизводятся из каталога \code{course_work}. Команды для стенда с Docker приведены в листинге~\ref{lst:docker}. При запуске создаются два контейнерных узла, выполняется сборка и сохраняются результаты. После завершения временные контейнеры, сеть и том запуска удаляются.
+
+\begin{lstlisting}[language=bash,caption={Запуск измерений и сборка отчёта},label={lst:docker}]
+bash bench/docker/run.sh
+make report
+\end{lstlisting}
+
+Для запуска на двух Linux-узлах требуются совместимые версии Open MPI и доступ по SSH. Сборка выполняется на первом узле командой \code{make}. Каталог \code{build} копируется на второй узел по тому же абсолютному пути. Команда запуска приведена в листинге~\ref{lst:linux}.
+
+\begin{lstlisting}[language=bash,caption={Запуск замеров на двух Linux-узлах},label={lst:linux}]
+bash bench/run.sh --host node-a:1,node-b:1
+\end{lstlisting}
+
+Отдельные измерения записываются в \code{results/samples.csv}, размещение процессов и число потоков~--- в \code{results/placement.txt}. При сборке отчёта скрипт \code{bench/summarize.py} проверяет полноту серий и распределение рангов, затем формирует сводную таблицу и данные для графика.
 
 \end{document}

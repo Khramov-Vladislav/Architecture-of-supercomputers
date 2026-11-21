@@ -1,0 +1,44 @@
+% !TEX root = main.tex
+\documentclass[a4paper,14pt]{extarticle}
+\usepackage{fontspec}
+\setmainfont{cmunrm.otf}[
+    BoldFont=cmunbx.otf,
+    ItalicFont=cmunit.otf,
+    BoldItalicFont=cmunbi.otf
+]
+\setmonofont{cmuntt.otf}[BoldFont=cmuntb.otf,ItalicFont=cmunti.otf]
+\usepackage[russian]{babel}
+\usepackage[left=30mm,right=15mm,top=20mm,bottom=20mm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,indentfirst,setspace,pgfplots,float,xurl}
+\usepackage[font=small,labelsep=endash]{caption}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\hypersetup{pdftitle={Умножение матриц с OpenMP и MPI},pdfauthor={Храмов В. Д.}}
+\pgfplotsset{compat=1.18}
+\onehalfspacing
+\setlength{\parindent}{1.25cm}
+\setlength{\emergencystretch}{2em}
+
+\newcommand{\code}[1]{\path{#1}}
+\renewcommand{\lstlistingname}{Листинг}
+\lstset{
+    basicstyle=\ttfamily\footnotesize\linespread{1}\selectfont,
+    backgroundcolor=\color{gray!10},
+    commentstyle=\color{green!45!black},
+    keywordstyle=\color{blue!70!black},
+    stringstyle=\color{violet!75!black},
+    captionpos=b,
+    numbers=left,
+    numberstyle=\ttfamily\scriptsize\color{gray!80!black},
+    numbersep=6pt,
+    xleftmargin=2em,
+    frame=single,
+    framesep=5pt,
+    keepspaces=true,
+    columns=fullflexible,
+    showstringspaces=false,
+    breaklines=true
+}
+\input{build/measurements.tex}

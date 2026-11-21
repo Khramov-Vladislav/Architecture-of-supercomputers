@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+# The launcher volume is shared only within the disposable experiment.
+# Open MPI supplies the remote daemon command as a shell command line.
+[ "$1" = node-b ]
+shift
+printf '%s\n' "$*" > /launcher/command

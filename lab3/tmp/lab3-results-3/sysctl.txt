@@ -1,0 +1,12 @@
+machdep.cpu.brand_string: Apple M2
+hw.perflevel0.physicalcpu: 4
+hw.perflevel0.physicalcpu_max: 4
+hw.perflevel0.logicalcpu: 4
+hw.perflevel0.logicalcpu_max: 4
+hw.perflevel0.l1icachesize: 196608
+hw.perflevel0.l1dcachesize: 131072
+hw.perflevel0.l2cachesize: 16777216
+hw.perflevel0.cpusperl2: 4
+hw.perflevel0.name: Performance
+hw.cachelinesize: 128
+hw.pagesize: 16384

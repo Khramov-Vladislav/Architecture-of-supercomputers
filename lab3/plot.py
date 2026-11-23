@@ -48,11 +48,19 @@ def save(fig, name):
 
 
 # 1. Размер кэша
-rows = read("size.csv")
-x = [int(r["size_bytes"]) for r in rows]
-y = [float(r["ns_per_access"]) for r in rows]
+size_curves = (
+    ("size.csv", 64, BLUE),
+    ("size_l2.csv", 128, ORANGE),
+)
 fig, ax = plt.subplots(figsize=(8, 4.2))
-ax.plot(x, y, color=BLUE, marker="o")
+for name, step, color in size_curves:
+    rows = read(name)
+    x = [int(r["size_bytes"]) for r in rows]
+    for key, label, style in (("min_ns_per_access", "минимум", "-"),
+                              ("avg_ns_per_access", "среднее", "--")):
+        y = [float(r[key]) for r in rows]
+        ax.plot(x, y, color=color, linestyle=style, marker="o",
+                label=f"шаг {step} Б, {label}")
 ax.set_xscale("log", base=2)
 ax.set_yscale("log")
 ticks = [1 << k for k in range(12, 29, 2)]
@@ -63,11 +71,11 @@ for b, label in ((128 << 10, "128 КБ"), (16 << 20, "16 МБ")):
     ax.text(b * 1.08, 1.4, label, color="black")
 ax.set_xlabel("Размер массива, байт")
 ax.set_ylabel("Время доступа, нс")
+ax.legend(fontsize=8, ncol=2)
 save(fig, "size.png")
 
 # 2. Размер строки
-# Метод А для массива в ОЗУ, метод Б для массива в ОЗУ и в L2.
-# Пунктир: предполагаемая граница строки (L2 - 128 байт, L1 - 64 байта).
+# Метод А используется для оценки скорости обработки, а метод Б — для размера строки.
 for name, method, out, line in (
     ("line_ram.csv", "A", "line_a.png", 128),
     ("line_ram.csv", "B", "line_b.png", 128),
@@ -75,32 +83,43 @@ for name, method, out, line in (
 ):
     pts = [r for r in read(name) if r["method"] == method]
     x = [int(r["stride_bytes"]) for r in pts]
-    y = [float(r["value"]) for r in pts]
     fig, ax = plt.subplots(figsize=(6.5, 3.6))
-    ax.plot(x, y, color=BLUE, marker="o")
+    for key, label, style in (("min_value", "минимум", "-"),
+                              ("avg_value", "среднее", "--")):
+        y = [float(r[key]) for r in pts]
+        ax.plot(x, y, color=BLUE, linestyle=style, marker="o", label=label)
     ax.set_xscale("log", base=2)
-    ax.set_xticks(x, [str(v) for v in x])
+    if method == "B":
+        ticks = [4, 16, 32, 48, 64, 96, 128, 192]
+        ax.set_xticks(ticks, [str(v) for v in ticks])
+    else:
+        ax.set_xticks(x, [str(v) for v in x])
     ax.axvline(line, color=ORANGE, linestyle="--", linewidth=1)
     ax.set_ylim(bottom=0)
     if method == "A":
         ax.set_xlabel("Шаг, байт")
         ax.set_ylabel("Время прохода массива, мс")
+        ax.legend()
     else:
         ax.set_xlabel("Расстояние d, байт")
         ax.set_ylabel("Время на блок (2 чтения), нс")
+        ax.legend()
     save(fig, out)
 
 # 3. Ассоциативность
 for name, out, k in (("assoc_l1.csv", "assoc_l1.png", 8), ("assoc_l2.csv", "assoc_l2.png", None)):
     rows = read(name)
     x = [int(r["fragments"]) for r in rows]
-    y = [float(r["ns_per_access"]) for r in rows]
     fig, ax = plt.subplots(figsize=(6.5, 3.6))
-    ax.plot(x, y, color=BLUE, marker="o")
+    for key, label, style in (("min_ns_per_access", "минимум", "-"),
+                              ("avg_ns_per_access", "среднее", "--")):
+        y = [float(r[key]) for r in rows]
+        ax.plot(x, y, color=BLUE, linestyle=style, marker="o", label=label)
     if k:
         ax.axvline(k + 0.5, color=ORANGE, linestyle="--", linewidth=1)
     ax.set_xticks(range(0, max(x) + 1, 4))
     ax.set_ylim(bottom=0)
     ax.set_xlabel("Число фрагментов N")
     ax.set_ylabel("Время доступа, нс")
+    ax.legend()
     save(fig, out)

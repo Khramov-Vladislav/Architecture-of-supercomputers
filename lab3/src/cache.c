@@ -13,12 +13,13 @@
 #include <pthread.h>
 #endif
 
-#define KB (1024UL)
+#define KB (1024UL)         
 #define MB (1024UL * KB)
-#define MIN_MEASURE_STEPS (1 * MB)
-#define WARMUP 2
-#define TRIALS 5
+#define MIN_MEASURE_STEPS (1 * MB)   // Минимум переходов в одном измерении
+#define WARMUP 2                     // Прогревочных прохода перед каждым замером
+#define TRIALS 5                     // Измеряемых повторов для расчёта статистик
 
+// Статистики времени для одного набора параметров эксперимента
 typedef struct
 {
     double min;
@@ -26,6 +27,7 @@ typedef struct
     double median;
 } stats_t;
 
+// Возвращает монотонное системное время в наносекундах
 static double now_ns(void)
 {
     struct timespec ts;
@@ -33,7 +35,10 @@ static double now_ns(void)
     return ts.tv_sec * 1e9 + ts.tv_nsec;
 }
 
+// Фиксированное начальное состояние делает последовательность воспроизводимой
 static uint64_t rng_state = 88172645463325252ULL;
+
+// Генератор псевдослучайных чисел xorshift
 static uint64_t rng(void)
 {
     rng_state ^= rng_state << 13;
@@ -42,6 +47,7 @@ static uint64_t rng(void)
     return rng_state;
 }
 
+// Перемешивает n индексов 
 static void shuffle(size_t *a, size_t n)
 {
     for (size_t i = n - 1; i > 0; i--)
@@ -53,6 +59,7 @@ static void shuffle(size_t *a, size_t n)
     }
 }
 
+// Выделяет и обнуляет bytes байт памяти с выравниванием на 16 КиБ
 static void *alloc(size_t bytes)
 {
     void *p = NULL;
@@ -65,13 +72,10 @@ static void *alloc(size_t bytes)
     return p;
 }
 
-// Обход цепочки: каждый элемент хранит индекс следующего.
-// Следующий адрес известен только после чтения текущего, поэтому
-// процессор не может перекрыть обращения, а предвыборка не угадывает адрес.
+// Результат последнего перехода
 static volatile uint32_t sink;
 
-// Volatile load гарантирует, что оптимизатор не вынесет повторное чтение
-// из цикла, в частности для цепочки, состоящей из одного узла.
+// Выполняет steps зависимых переходов по цепочке: каждый узел хранит индекс следующего
 static uint32_t chase_steps(const volatile uint32_t *a, uint32_t p, size_t steps)
 {
     for (size_t i = 0; i < steps; i++)
@@ -80,6 +84,7 @@ static uint32_t chase_steps(const volatile uint32_t *a, uint32_t p, size_t steps
     return p;
 }
 
+// Компаратор для qsort: задаёт порядок чисел с плавающей точкой по возрастанию
 static int compare_double(const void *lhs, const void *rhs)
 {
     double a = *(const double *)lhs;
@@ -87,6 +92,7 @@ static int compare_double(const void *lhs, const void *rhs)
     return (a > b) - (a < b);
 }
 
+// Вычисляет минимум, среднее и медиану массива замеров 
 static stats_t summarize(double *samples, size_t count)
 {
     stats_t result = {samples[0], 0.0, 0.0};
@@ -101,8 +107,7 @@ static stats_t summarize(double *samples, size_t count)
     return result;
 }
 
-// Каждый замер предваряется WARMUP полными проходами; один проход измеряется
-// отдельно в каждом из TRIALS повторов.
+// Проводит TRIALS повторов: в каждом выполняет WARMUP прогревочных обходов, затем измеряет один проход цепочки
 static stats_t measure_chase(const uint32_t *a, uint32_t start, size_t steps)
 {
     double samples[TRIALS];
@@ -119,6 +124,7 @@ static stats_t measure_chase(const uint32_t *a, uint32_t start, size_t steps)
     return summarize(samples, TRIALS);
 }
 
+// Последовательно обходит массив int с шагом stride в байтах и увеличивает каждый выбранный элемент
 static void walk_stride(int *arr, size_t n, size_t stride)
 {
     size_t step = stride / sizeof(*arr);
@@ -126,6 +132,7 @@ static void walk_stride(int *arr, size_t n, size_t stride)
         arr[i]++;
 }
 
+// Измеряет полный проход walk_stride: перед каждым из TRIALS замеров выполняет WARMUP прогревов
 static stats_t measure_stride(int *arr, size_t n, size_t stride)
 {
     double samples[TRIALS];
@@ -140,20 +147,20 @@ static stats_t measure_stride(int *arr, size_t n, size_t stride)
     return summarize(samples, TRIALS);
 }
 
+// Возвращает кол-во переходов
 static size_t full_cycle_steps(size_t nodes)
 {
     return nodes > MIN_MEASURE_STEPS ? nodes : MIN_MEASURE_STEPS;
 }
 
-// Связывает элементы с индексами idx[0..n-1] в цикл в заданном порядке.
+// Связывает n выбранных индексов в замкнутый цикл
 static void link(uint32_t *a, const size_t *idx, size_t n)
 {
     for (size_t i = 0; i < n; i++)
         a[idx[i]] = (uint32_t)idx[(i + 1) % n];
 }
 
-// 1. Размер кэша: цепочка проходит по одному int из каждого блока
-// размером step байт в случайном порядке.
+// Эксперимент 1: оценивает границы кэш-уровней по задержке случайной цепочки
 static void run_size(size_t step)
 {
     printf("size_bytes,min_ns_per_access,avg_ns_per_access,median_ns_per_access\n");
@@ -180,10 +187,9 @@ static void run_size(size_t step)
     free(a);
 }
 
-// 2. Размер строки.
-// Метод А измеряет только эффективную скорость обработки массива. Из-за
-// последовательного доступа он допускает векторизацию и предвыборку.
-// Метод Б использует зависимую цепочку случайных указателей для оценки строки.
+// Эксперимент 2: сравнивает последовательный метод A и зависимый метод B.
+// Метод A оценивает скорость заданного цикла, но допускает оптимизации
+// Метод B ищет границы строк по задержке пары связанных чтений
 static void run_line(size_t bytes)
 {
     printf("method,stride_bytes,min_value,avg_value,median_value\n");
@@ -198,8 +204,7 @@ static void run_line(size_t bytes)
     }
     free(arr);
 
-    // 256 байт позволяет проверить смещения по обе стороны границ строк
-    // L1 (64 Б) и L2 (128 Б), сохраняя достаточный активный набор данных.
+    // 256 байт позволяет проверить смещения по обе стороны границ строк L1 (64 Б) и L2 (128 Б)
     size_t block = 256;
     size_t nblocks = bytes / block;
     uint32_t *a = alloc(bytes);
@@ -225,7 +230,7 @@ static void run_line(size_t bytes)
         stats_t t = measure_chase(a, (uint32_t)idx[0],
                                   full_cycle_steps(2 * nblocks));
         printf("B,%zu,%.3f,%.3f,%.3f\n", d,
-               2 * t.min, 2 * t.avg, 2 * t.median); // нс на пару чтений
+               2 * t.min, 2 * t.avg, 2 * t.median);
         fflush(stdout);
     }
     free(order);
@@ -233,10 +238,7 @@ static void run_line(size_t bytes)
     free(a);
 }
 
-// 3. Конфликтный тест: по одному узлу на фрагмент, начала фрагментов
-// отстоят на размер исследуемого кэша. Для виртуально индексируемого L1
-// эти узлы попадают в один набор; для физически индексируемого L2 это
-// предположение проверить из пользовательского процесса нельзя.
+// Эксперимент 3: оценивает ассоциативность 
 static void run_assoc(size_t cache, int maxn)
 {
     printf("fragments,min_ns_per_access,avg_ns_per_access,median_ns_per_access\n");
@@ -244,8 +246,6 @@ static void run_assoc(size_t cache, int maxn)
     size_t *idx = malloc(2 * (size_t)maxn * sizeof(size_t));
     for (int nf = 1; nf <= maxn; nf++)
     {
-        // Два разных адреса внутри строки исключают вырожденный цикл
-        // с единственным узлом, но каждый фрагмент занимает ровно одну строку.
         for (int f = 0; f < nf; f++)
         {
             idx[2 * f] = (size_t)f * cache / sizeof(uint32_t);

@@ -1,9 +1,3 @@
-// Исследование характеристик кэш-памяти:
-//   size  - размер каждого уровня кэша (случайный обход массива 4 КБ .. 256 МБ)
-//   line  - размер строки кэша (обход массива с шагом stride)
-//   assoc - степень ассоциативности (обход N фрагментов, отстоящих на размер кэша)
-// Сборка: clang -O2 -o cache cache.c
-// Запуск: ./cache size|line|assoc [параметры] > result.csv
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,32 +7,24 @@
 #include <pthread.h>
 #endif
 
-#define KB (1024UL)         
+#define KB (1024UL)
 #define MB (1024UL * KB)
-#define MIN_MEASURE_STEPS (1 * MB)   // Минимум переходов в одном измерении
-#define WARMUP 2                     // Прогревочных прохода перед каждым замером
-#define TRIALS 5                     // Измеряемых повторов для расчёта статистик
-
-// Статистики времени для одного набора параметров эксперимента
+#define MIN_MEASURE_STEPS (1 * MB)
+#define WARMUP 2
+#define TRIALS 5
 typedef struct
 {
     double min;
     double avg;
     double median;
 } stats_t;
-
-// Возвращает монотонное системное время в наносекундах
 static double now_ns(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
     return ts.tv_sec * 1e9 + ts.tv_nsec;
 }
-
-// Фиксированное начальное состояние делает последовательность воспроизводимой
 static uint64_t rng_state = 88172645463325252ULL;
-
-// Генератор псевдослучайных чисел xorshift
 static uint64_t rng(void)
 {
     rng_state ^= rng_state << 13;
@@ -46,8 +32,6 @@ static uint64_t rng(void)
     rng_state ^= rng_state << 17;
     return rng_state;
 }
-
-// Перемешивает n индексов 
 static void shuffle(size_t *a, size_t n)
 {
     for (size_t i = n - 1; i > 0; i--)
@@ -58,8 +42,6 @@ static void shuffle(size_t *a, size_t n)
         a[j] = t;
     }
 }
-
-// Выделяет и обнуляет bytes байт памяти с выравниванием на 16 КиБ
 static void *alloc(size_t bytes)
 {
     void *p = NULL;
@@ -71,11 +53,7 @@ static void *alloc(size_t bytes)
     memset(p, 0, bytes);
     return p;
 }
-
-// Результат последнего перехода
 static volatile uint32_t sink;
-
-// Выполняет steps зависимых переходов по цепочке: каждый узел хранит индекс следующего
 static uint32_t chase_steps(const volatile uint32_t *a, uint32_t p, size_t steps)
 {
     for (size_t i = 0; i < steps; i++)
@@ -83,16 +61,12 @@ static uint32_t chase_steps(const volatile uint32_t *a, uint32_t p, size_t steps
     sink = p;
     return p;
 }
-
-// Компаратор для qsort: задаёт порядок чисел с плавающей точкой по возрастанию
 static int compare_double(const void *lhs, const void *rhs)
 {
     double a = *(const double *)lhs;
     double b = *(const double *)rhs;
     return (a > b) - (a < b);
 }
-
-// Вычисляет минимум, среднее и медиану массива замеров 
 static stats_t summarize(double *samples, size_t count)
 {
     stats_t result = {samples[0], 0.0, 0.0};
@@ -106,8 +80,6 @@ static stats_t summarize(double *samples, size_t count)
     result.median = samples[count / 2];
     return result;
 }
-
-// Проводит TRIALS повторов: в каждом выполняет WARMUP прогревочных обходов, затем измеряет один проход цепочки
 static stats_t measure_chase(const uint32_t *a, uint32_t start, size_t steps)
 {
     double samples[TRIALS];
@@ -123,16 +95,12 @@ static stats_t measure_chase(const uint32_t *a, uint32_t start, size_t steps)
     }
     return summarize(samples, TRIALS);
 }
-
-// Последовательно обходит массив int с шагом stride в байтах и увеличивает каждый выбранный элемент
 static void walk_stride(int *arr, size_t n, size_t stride)
 {
     size_t step = stride / sizeof(*arr);
     for (size_t i = 0; i < n; i += step)
         arr[i]++;
 }
-
-// Измеряет полный проход walk_stride: перед каждым из TRIALS замеров выполняет WARMUP прогревов
 static stats_t measure_stride(int *arr, size_t n, size_t stride)
 {
     double samples[TRIALS];
@@ -146,28 +114,21 @@ static stats_t measure_stride(int *arr, size_t n, size_t stride)
     }
     return summarize(samples, TRIALS);
 }
-
-// Возвращает кол-во переходов
 static size_t full_cycle_steps(size_t nodes)
 {
     return nodes > MIN_MEASURE_STEPS ? nodes : MIN_MEASURE_STEPS;
 }
-
-// Связывает n выбранных индексов в замкнутый цикл
 static void link(uint32_t *a, const size_t *idx, size_t n)
 {
     for (size_t i = 0; i < n; i++)
         a[idx[i]] = (uint32_t)idx[(i + 1) % n];
 }
-
-// Эксперимент 1: оценивает границы кэш-уровней по задержке случайной цепочки
 static void run_size(size_t step)
 {
     printf("size_bytes,min_ns_per_access,avg_ns_per_access,median_ns_per_access\n");
     size_t max = 256 * MB;
     uint32_t *a = alloc(max);
     size_t *idx = malloc(max / step * sizeof(size_t));
-    // размеры 2^k, 1.25 * 2^k, 1.5 * 2^k, 1.75 * 2^k от 4 КБ до 256 МБ
     for (size_t p = 4 * KB; p <= max; p *= 2)
     {
         for (int q = 4; q < 8 && p * q / 4 <= max; q++)
@@ -186,10 +147,6 @@ static void run_size(size_t step)
     free(idx);
     free(a);
 }
-
-// Эксперимент 2: сравнивает последовательный метод A и зависимый метод B.
-// Метод A оценивает скорость заданного цикла, но допускает оптимизации
-// Метод B ищет границы строк по задержке пары связанных чтений
 static void run_line(size_t bytes)
 {
     printf("method,stride_bytes,min_value,avg_value,median_value\n");
@@ -203,8 +160,6 @@ static void run_line(size_t bytes)
         fflush(stdout);
     }
     free(arr);
-
-    // 256 байт позволяет проверить смещения по обе стороны границ строк L1 (64 Б) и L2 (128 Б)
     size_t block = 256;
     size_t nblocks = bytes / block;
     uint32_t *a = alloc(bytes);
@@ -219,7 +174,6 @@ static void run_line(size_t bytes)
     for (size_t di = 0; di < sizeof(distances) / sizeof(distances[0]); di++)
     {
         size_t d = distances[di];
-        // элементы блока: смещение 0 и смещение d
         for (size_t i = 0; i < nblocks; i++)
         {
             size_t base = order[i] * (block / sizeof(uint32_t));
@@ -237,8 +191,6 @@ static void run_line(size_t bytes)
     free(idx);
     free(a);
 }
-
-// Эксперимент 3: оценивает ассоциативность 
 static void run_assoc(size_t cache, int maxn)
 {
     printf("fragments,min_ns_per_access,avg_ns_per_access,median_ns_per_access\n");
@@ -265,7 +217,6 @@ static void run_assoc(size_t cache, int maxn)
 int main(int argc, char **argv)
 {
 #ifdef __APPLE__
-    // просим планировщик держать поток на производительных ядрах
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #endif
     if (argc < 2)
